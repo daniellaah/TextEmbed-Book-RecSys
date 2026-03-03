@@ -75,8 +75,8 @@ docs/
 - `data/processed/items.jsonl`: Item 结构化语料（唯一 item 粒度，不含 `text`）
 - `data/processed/interactions_train.jsonl`: 训练交互
 - `data/processed/interactions_eval.jsonl`: 评估交互
-- `outputs/embeddings/<model_name>/<experiment_id>/item_embeddings.npy`: 按实验配置产出的 item 向量
-- `outputs/index/<model_name>/<experiment_id>/faiss.index`: 按实验配置构建的检索索引
+- `outputs/embeddings/<model_name>/<experiment_id>/<run_id>/item_embeddings.npy`: 按实验配置产出的 item 向量
+- `outputs/index/<model_name>/<experiment_id>/<run_id>/faiss.index`: 按实验配置构建的检索索引
 - `reports/eval/<run_id>.json`: 指标结果
 - `reports/eval/<run_id>.md`: 结果解读与结论
 
@@ -120,6 +120,15 @@ docs/
 - `item_id`: 统一主键，后续模块全部使用该键。
 - `items.jsonl` 仅保留结构化字段，不直接落 `text`。
 - 文本拼接（view/template）与 embedding 生成由下游阶段负责（见第 7 节）。
+- 字段清洗与列表渲染规则由 `build_items.py` 统一实现并固化。
+
+`build_items.py` 渲染规则（固定）:
+
+- 字符串字段（`title/subtitle/author/description`）: `strip` + 连续空白折叠 + 换行替换为空格。
+- 列表字段先做元素清洗: 丢弃 `null`、空字符串与全空白元素。
+- `features` 列表统一渲染为 `"; "` 连接后的字符串字段（用于下游模板 `{features}`）。
+- `categories` 列表统一渲染为 `" > "` 连接后的字符串字段（用于下游模板 `{categories}`）。
+- 清洗后列表为空则渲染为空字符串 `""`。
 
 脚本路径约定:
 
@@ -181,6 +190,7 @@ Embedding 输入约定:
 - 实验配置统一放在 `configs/experiments/*.yaml`
 - 每个 `view_id` 单独生成一份 item embedding
 - 对多视图 embedding 做融合后再建索引，融合方式由 `fusion.method` 指定
+- 输入字段清洗与列表渲染规则以第 5 节 `build_items.py` 产物为准。
 
 实验配置模板（示例）:
 
@@ -215,9 +225,9 @@ text_views:
 
 fusion:
   method: weighted_mean
-  input_views: [view_title_meta, view_description, view_features, view_categories]
+  input_views: [view_title, view_description, view_features, view_categories]
   weights:
-    view_title_meta: 0.4
+    view_title: 0.4
     view_description: 0.2
     view_features: 0.2
     view_categories: 0.2
@@ -226,11 +236,13 @@ fusion:
 
 融合策略（首批）:
 
-- `baseline_concat_text`: 单文本拼接基线（全字段拼成一个 view 后直接建索引）
-- `mean`: 多 view 等权平均（模型输出向量默认已归一化；若 `normalization=true`，则融合后再归一化）
+- `identity`: 不做多视图融合，直接使用单 view 向量（baseline concat 使用该方法）
 - `weighted_mean`: 多 view 加权平均（默认 `view_title=0.4`, `view_description=0.2`, `view_features=0.2`, `view_categories=0.2`）
-- `concat`: 多 view 向量拼接（P1 可选，需单独记录维度变化与索引成本）
-- `late_fusion`: 多索引分数融合（P1 可选）
+- 其余融合策略暂不纳入当前版本。
+
+命名约定（避免歧义）:
+
+- `fusion.method` 的 canonical 枚举固定为: `identity`, `weighted_mean`。
 
 `fusion.normalization` 语义:
 
@@ -275,6 +287,8 @@ fusion:
 - `reports/eval/<run_id>.json`: 指标、样本数、运行时长
 - `reports/eval/<run_id>.md`: 结论、异常、后续动作
 - `outputs/runs/<run_id>/config.json`: 完整配置快照
+- `outputs/embeddings/<model_name>/<experiment_id>/<run_id>/item_embeddings.npy`
+- `outputs/index/<model_name>/<experiment_id>/<run_id>/faiss.index`
 
 `config.json` 至少包含:
 
@@ -286,6 +300,7 @@ fusion:
 - 实验配置信息（`experiment_id`, `experiment_config_path`, `view_ids`, `fusion_method`）
 - 融合归一化开关（`fusion_normalization`）
 - 配置哈希信息（`text_config_hash`, `fusion_config_hash`, `full_config_hash`）
+- 本次运行产物路径（embedding/index 路径，需包含 `run_id`）
 
 ## 10. 开发与 Code/Function Review 规范
 

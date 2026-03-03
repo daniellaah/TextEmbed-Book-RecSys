@@ -22,4 +22,3 @@ fusion:
   method: identity
   input_views: [view_all]
   normalization: false
-

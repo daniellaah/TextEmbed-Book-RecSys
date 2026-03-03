@@ -36,4 +36,3 @@ fusion:
     view_features: 0.2
     view_categories: 0.2
   normalization: true
-
