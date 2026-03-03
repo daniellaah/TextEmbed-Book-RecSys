@@ -112,7 +112,7 @@ docs/
 `items.jsonl` 目标 schema:
 
 ```json
-{"item_id":"B000XXXX","title":"...","subtitle":"...","author":"...","description":"...","features":["..."],"categories":["..."]}
+{"item_id":"B000XXXX","title":"...","subtitle":"...","author":"...","description":"...","features":"...","categories":"..."}
 ```
 
 字段说明:
@@ -122,13 +122,13 @@ docs/
 - 文本拼接（view/template）与 embedding 生成由下游阶段负责（见第 7 节）。
 - 字段清洗与列表渲染规则由 `build_items.py` 统一实现并固化。
 
-`build_items.py` 渲染规则（固定）:
+`build_items.py` 清洗与标准化规则:
 
 - 字符串字段（`title/subtitle/author/description`）: `strip` + 连续空白折叠 + 换行替换为空格。
-- 列表字段先做元素清洗: 丢弃 `null`、空字符串与全空白元素。
-- `features` 列表统一渲染为 `"; "` 连接后的字符串字段（用于下游模板 `{features}`）。
-- `categories` 列表统一渲染为 `" > "` 连接后的字符串字段（用于下游模板 `{categories}`）。
-- 清洗后列表为空则渲染为空字符串 `""`。
+- 原始列表字段先做元素清洗: 丢弃 `null`、空字符串与全空白元素。
+- `features` 在 `build_items.py` 中按 `"; "` 渲染为字符串并落盘到 `items.jsonl`。
+- `categories` 在 `build_items.py` 中按 `" > "` 渲染为字符串并落盘到 `items.jsonl`。
+- 若列表为空，落盘为空字符串 `""`。
 
 脚本路径约定:
 
