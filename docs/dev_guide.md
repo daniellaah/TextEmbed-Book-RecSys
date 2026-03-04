@@ -34,11 +34,10 @@ uv venv --python 3.10
 uv sync --extra dev
 ```
 
-建议设置本地缓存目录（便于权限控制与复现）:
+建议设置 `uv` 本地缓存目录（便于权限控制与复现）:
 
 ```bash
 export UV_CACHE_DIR=.uv-cache
-export HF_HOME=.hf-cache
 ```
 
 可复现运行约定:
@@ -228,6 +227,8 @@ Embedding 输入约定:
 
 - 由 embedding 阶段基于 `items.jsonl` + 实验配置动态渲染文本，不产出 `items_text.jsonl` 中间文件
 - 实验配置统一放在 `configs/experiments/*.yaml`
+- `model.name` 必须是 Hugging Face repo id（`namespace/model`），例如 `BAAI/bge-m3`
+- embedding 模型只从本机 `~/.cache/huggingface/hub` 读取，不走远程下载
 - 每个 `view_id` 单独生成一份 item embedding
 - 对多视图 embedding 做融合后再建索引，融合方式由 `fusion.method` 指定
 - 输入字段清洗与列表渲染规则以第 5 节 `build_items.py` 产物为准。

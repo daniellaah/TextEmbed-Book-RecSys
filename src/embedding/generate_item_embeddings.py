@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -18,6 +19,9 @@ import torch.nn.functional as F
 import yaml
 from numpy.lib.format import open_memmap
 from transformers import AutoModel, AutoTokenizer
+
+
+MODEL_REPO_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 class SafeFormatDict(dict[str, str]):
@@ -87,19 +91,28 @@ def is_valid_local_model_dir(path: Path) -> bool:
     return has_config and has_weights and has_tokenizer
 
 
-def resolve_local_model_ref(model_name: str) -> str:
-    """Resolve to a local model directory only; never trigger remote download."""
-    candidate = Path(model_name).expanduser()
-    if candidate.is_absolute() or str(model_name).startswith("."):
-        if is_valid_local_model_dir(candidate):
-            return str(candidate)
-        raise FileNotFoundError(
-            "model.name points to local path but required files are missing. "
-            f"path={candidate}"
+def get_hf_cache_root() -> Path:
+    return Path.home() / ".cache" / "huggingface" / "hub"
+
+
+def validate_model_name(model_name: str) -> None:
+    if model_name.startswith(("/", "./", "../", "~")):
+        raise ValueError(
+            "model.name must be a Hugging Face repo id in '<namespace>/<model>' format; "
+            "path-like values are not allowed."
+        )
+    if not MODEL_REPO_ID_RE.fullmatch(model_name):
+        raise ValueError(
+            "model.name must match '^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$'."
         )
 
-    cache_root = Path.home() / ".cache" / "huggingface" / "hub"
-    repo_cache_dir = cache_root / f"models--{model_name.replace('/', '--')}"
+
+def resolve_local_model_ref(model_name: str) -> str:
+    """Resolve to a local model directory only; never trigger remote download."""
+    validate_model_name(model_name)
+    namespace, model = model_name.split("/", 1)
+    cache_root = get_hf_cache_root()
+    repo_cache_dir = cache_root / f"models--{namespace}--{model}"
     snapshots_dir = repo_cache_dir / "snapshots"
     if snapshots_dir.exists():
         snapshots = sorted(
@@ -112,8 +125,10 @@ def resolve_local_model_ref(model_name: str) -> str:
                 return str(snapshot)
 
     download_hint = (
-        f"Local model not found for '{model_name}'.\n"
-        "Please pre-download the model, then re-run.\n"
+        f"Local model snapshot not found for repo id '{model_name}'.\n"
+        f"Expected cache root: {cache_root}\n"
+        f"Expected snapshots dir: {snapshots_dir}\n"
+        "Please pre-download this model to local Hugging Face cache, then re-run.\n"
         "Example download command:\n"
         "  .venv/bin/python - <<'PY'\n"
         "from transformers import AutoTokenizer, AutoModel\n"
@@ -139,8 +154,10 @@ def validate_experiment_config(cfg: dict[str, Any]) -> None:
     model_cfg = cfg.get("model")
     if not isinstance(model_cfg, dict):
         raise ValueError("Missing 'model' section in config.")
-    if not normalize_text(model_cfg.get("name")):
+    model_name = normalize_text(model_cfg.get("name"))
+    if not model_name:
         raise ValueError("Missing 'model.name' in config.")
+    validate_model_name(model_name)
     if int(model_cfg.get("max_length", 0)) <= 0:
         raise ValueError("'model.max_length' must be > 0.")
     if int(model_cfg.get("batch_size", 0)) <= 0:
@@ -425,7 +442,7 @@ def main() -> None:
     except Exception as e:
         hint = (
             "Failed to load model/tokenizer. "
-            "This pipeline is local-only. Please ensure model files exist in local cache/path. "
+            "This pipeline is local-only. Please ensure model files exist in ~/.cache/huggingface/hub. "
             "If error mentions protobuf, install protobuf in the runtime."
         )
         raise RuntimeError(f"{hint} Root cause: {type(e).__name__}: {e}") from e
