@@ -1,6 +1,6 @@
-# 开发文档（v0.3）
+# 开发文档（v0.4）
 
-最后更新: `2026-03-03`
+最后更新: `2026-03-04`
 
 ## 1. 项目目标与成功标准
 
@@ -79,7 +79,6 @@ docs/
 - `outputs/eval/<eval_run_id>/predictions.jsonl`: 每条 query 的 topK 检索结果
 - `outputs/eval/<eval_run_id>/run_eval_report.json`: 指标结果
 - `outputs/eval/<eval_run_id>/info.json`: 本次评估输入与参数快照
-- `reports/eval/<run_id>.md`: 结果解读与结论
 
 ## 4. 数据源与字段约定
 
@@ -297,15 +296,16 @@ fusion:
 
 索引规范:
 
-- 第一阶段统一用 `faiss.IndexFlatIP`
-- 使用 L2 归一化后做内积检索
-- 检索 `top_k=100`
+- 支持 `flat` 与 `hnsw` 两种索引类型（见 `run_eval.py` 参数）。
+- 向量统一做 L2 归一化后以内积检索。
+- 大规模全量评估建议使用 `hnsw`；`flat` 适合小规模精确验证。
 
 脚本路径约定:
 
 - `src/embedding/generate_item_embeddings.py`
-- `src/retrieval/build_faiss_index.py`
-- `src/retrieval/search.py`
+- `src/retrieval/ann_utils.py`
+- `src/retrieval/review_item_neighbors.py`
+- `src/eval/run_eval.py`
 
 ## 8. 评估协议
 
@@ -320,6 +320,18 @@ fusion:
 - 候选集合: `items.jsonl` 全量 item（可在报告中附加采样实验）。
 - 命中定义: ground-truth item 出现在 topK 结果中。
 - 显著性: 主报告先给点估计；如需论文级别结论，再补 bootstrap 置信区间。
+- query 向量构造: 对 `query_item_ids` 对应 item embedding 做均值，再做 L2 归一化。
+- 检索结果会排除 `query_item_ids` 自身，避免历史泄漏。
+
+`run_eval.py` 关键参数:
+
+- `--eval-input`（默认 `data/processed/eval.jsonl`）
+- `--embedding-dir`（必填，目录下必须包含 `item_embeddings.npy` 与 `item_ids.jsonl`）
+- `--output-root`（默认 `outputs/eval`）
+- `--eval-run-id`（可选；不传时使用本机时间 `YYYYMMDDHHMMSS`）
+- `--max-query`（默认 `0`，表示不限制；`>0` 表示仅评估前 N 条有效 query）
+- `--topk`（默认 `10,50`）
+- `--index-type`（`flat`/`hnsw`，默认 `flat`）
 
 评估脚本路径约定:
 
@@ -327,15 +339,18 @@ fusion:
 
 ## 9. 实验记录与可复现要求
 
-每次运行必须生成唯一 `run_id`，并保存:
+每次运行必须生成唯一 `run_id` / `eval_run_id`，并保存:
 
-- `reports/eval/<run_id>.json`: 指标、样本数、运行时长
-- `reports/eval/<run_id>.md`: 结论、异常、后续动作
-- `outputs/runs/<run_id>/config.json`: 完整配置快照
-- `outputs/embeddings/<model_name>/<experiment_id>/<run_id>/item_embeddings.npy`
-- `outputs/index/<model_name>/<experiment_id>/<run_id>/faiss.index`
+- embedding 阶段:
+  - `outputs/runs/<run_id>/config.json`: embedding 完整配置快照
+  - `outputs/embeddings/<model_name>/<experiment_id>/<run_id>/item_embeddings.npy`
+  - `outputs/embeddings/<model_name>/<experiment_id>/<run_id>/item_ids.jsonl`
+- eval 阶段:
+  - `outputs/eval/<eval_run_id>/predictions.jsonl`
+  - `outputs/eval/<eval_run_id>/run_eval_report.json`
+  - `outputs/eval/<eval_run_id>/info.json`
 
-`config.json` 至少包含:
+embedding `config.json` 至少包含:
 
 - 数据版本（文件名 + 修改时间）
 - 模型名与 revision
@@ -344,7 +359,7 @@ fusion:
 - 随机种子、设备信息
 - 实验配置信息（`experiment_id`, `experiment_config_path`, `view_ids`, `fusion_method`）
 - 融合归一化开关（`fusion_normalization`）
-- 配置哈希信息（`text_config_hash`, `fusion_config_hash`, `full_config_hash`）
+- 配置哈希信息（`config_hash`）
 - 本次运行产物路径（embedding/index 路径，需包含 `run_id`）
 
 ## 10. 开发与 Code/Function Review 规范
@@ -372,9 +387,9 @@ Review 重点:
 
 P0:
 
-1. 打通 embedding + index + search + evaluate 全流程，消费 `data/processed/eval.jsonl` 并产出首份 `run_id` 报告。
+1. 评估结果汇总脚本（读取 `outputs/eval/*/info.json` 与 `run_eval_report.json`）并产出对比表。
 2. 固化 baseline 实验配置与运行命令，保证同配置可复跑同结果。
-3. 在 `reports/eval/` 输出首份指标解读（Recall/NDCG/MRR）及失败样本分析。
+3. 补充失败样本分析模板（基于 `predictions.jsonl`）。
 
 P1:
 
