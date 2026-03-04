@@ -230,6 +230,7 @@ Embedding 输入约定:
 - 实验配置统一放在 `configs/experiments/*.yaml`
 - `model.name` 必须是 Hugging Face repo id（`namespace/model`），例如 `BAAI/bge-m3`
 - embedding 模型只从本机 `~/.cache/huggingface/hub` 读取，不走远程下载
+- 对需要自定义模型代码的仓库，可在配置中显式设置 `model.trust_remote_code: true`
 - 每个 `view_id` 单独生成一份 item embedding
 - 对多视图 embedding 做融合后再建索引，融合方式由 `fusion.method` 指定
 - 输入字段清洗与列表渲染规则以第 5 节 `build_items.py` 产物为准。

@@ -123,6 +123,12 @@ class GenerateItemEmbeddingsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "model.embedding_dim"):
             mod.validate_experiment_config(cfg)
 
+    def test_validate_config_rejects_non_bool_trust_remote_code(self) -> None:
+        cfg = self._minimal_experiment_config(model_name="BAAI/bge-m3")
+        cfg["model"]["trust_remote_code"] = "true"
+        with self.assertRaisesRegex(ValueError, "model.trust_remote_code"):
+            mod.validate_experiment_config(cfg)
+
     def test_resolve_local_model_ref_uses_fixed_hf_cache_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)

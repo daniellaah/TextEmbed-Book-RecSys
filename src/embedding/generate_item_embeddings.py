@@ -170,6 +170,9 @@ def validate_experiment_config(cfg: dict[str, Any]) -> None:
         raise ValueError("'model.embedding_dim' must be > 0.")
     if int(model_cfg.get("max_length", 0)) <= 0:
         raise ValueError("'model.max_length' must be > 0.")
+    trust_remote_code = model_cfg.get("trust_remote_code", False)
+    if not isinstance(trust_remote_code, bool):
+        raise ValueError("'model.trust_remote_code' must be a boolean when provided.")
     text_views_cfg = cfg.get("text_views", {})
     views = text_views_cfg.get("views")
     if not isinstance(views, list) or not views:
@@ -442,6 +445,7 @@ def main() -> None:
     model_name = str(model_cfg["name"])
     embedding_dim_config = int(model_cfg["embedding_dim"])
     max_length = int(model_cfg["max_length"])
+    trust_remote_code = bool(model_cfg.get("trust_remote_code", False))
     batch_size = int(args.batch_size)
     normalize_embeddings = bool(model_cfg.get("normalize_embeddings", True))
 
@@ -481,10 +485,12 @@ def main() -> None:
         tokenizer = AutoTokenizer.from_pretrained(
             local_model_ref,
             local_files_only=True,
+            trust_remote_code=trust_remote_code,
         )
         model = AutoModel.from_pretrained(
             local_model_ref,
             local_files_only=True,
+            trust_remote_code=trust_remote_code,
         )
     except FileNotFoundError:
         raise
@@ -624,6 +630,7 @@ def main() -> None:
         "allow_device_fallback": args.allow_device_fallback,
         "batch_size": batch_size,
         "embedding_dim": embedding_dim_config,
+        "trust_remote_code": trust_remote_code,
     }
     config_hash = compute_config_hash(config_hash_payload)
 
@@ -641,6 +648,7 @@ def main() -> None:
             "max_length": max_length,
             "batch_size": batch_size,
             "embedding_dim": embedding_dim_config,
+            "trust_remote_code": trust_remote_code,
             "normalize_embeddings": normalize_embeddings,
         },
         "device": {

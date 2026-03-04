@@ -4,6 +4,7 @@ model:
   name: nvidia/llama-embed-nemotron-8b
   embedding_dim: 4096
   max_length: 512
+  trust_remote_code: true
   normalize_embeddings: true
 
 text_views:
