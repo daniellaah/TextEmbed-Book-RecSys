@@ -1,0 +1,48 @@
+{
+  "generated_at_utc": "2026-03-04T23:34:19.272808+00:00",
+  "config": {
+    "seed": 42,
+    "interactions_input": "data/processed/interactions.jsonl",
+    "queries_output": "data/processed/eval_u5_i5.jsonl",
+    "report_output": "reports/data_profile/build_eval_u5_i5_report.json",
+    "rating_threshold": 4.0,
+    "min_user_pos": 5,
+    "min_item_pos": 5,
+    "query_history_n": 1
+  },
+  "input_stats": {
+    "rows_total": 29475453,
+    "parse_error_rows": 0,
+    "non_object_rows": 0,
+    "rows_missing_user_id": 0,
+    "rows_missing_item_id": 0,
+    "rows_missing_rating": 0,
+    "rows_missing_timestamp": 0,
+    "rows_invalid_rating": 0,
+    "rows_invalid_timestamp": 0,
+    "rows_below_rating_threshold": 4451043
+  },
+  "positive_stats": {
+    "rows_positive_loaded": 25024410,
+    "users_pre_filter": 9244317,
+    "items_pre_filter": 4054088,
+    "samples_pre_filter": 25024410,
+    "users_post_filter": 619653,
+    "items_post_filter": 407158,
+    "samples_post_filter": 7315048
+  },
+  "kcore": {
+    "enabled": 1,
+    "iterations": 10,
+    "total_deleted_by_user_filter": 13779824,
+    "total_deleted_by_item_filter": 3929538
+  },
+  "eval_stats": {
+    "users_with_target": 619653,
+    "users_with_any_query_before_drop": 619653,
+    "users_dropped_due_to_no_history": 0,
+    "eval_query_rows_written": 619653,
+    "avg_query_length": 1.0,
+    "query_user_coverage_over_post_filter_users": 1.0
+  }
+}

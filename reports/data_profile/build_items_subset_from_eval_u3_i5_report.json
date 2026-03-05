@@ -1,0 +1,35 @@
+{
+  "generated_at_utc": "2026-03-04T23:39:35.354420+00:00",
+  "config": {
+    "eval_input": "data/processed/eval_u5_i5.jsonl",
+    "items_input": "data/processed/items.jsonl",
+    "output": "data/processed/items_u5_i5_subset.jsonl",
+    "report": "reports/data_profile/build_items_subset_from_eval_u3_i5_report.json"
+  },
+  "eval_stats": {
+    "rows_total": 619653,
+    "parse_error_rows": 0,
+    "non_object_rows": 0,
+    "rows_missing_user_id": 0,
+    "rows_missing_target_item_id": 0,
+    "rows_invalid_query_item_ids": 0,
+    "rows_valid": 619653,
+    "query_item_ids_total": 619653,
+    "query_item_ids_non_empty": 619653,
+    "wanted_unique_item_ids": 294663
+  },
+  "items_scan_stats": {
+    "rows_total": 4448181,
+    "parse_error_rows": 0,
+    "non_object_rows": 0,
+    "rows_missing_item_id": 0,
+    "rows_valid_with_item_id": 4448181,
+    "duplicate_item_id_rows": 0
+  },
+  "output_stats": {
+    "rows_written": 294663,
+    "missing_item_ids_from_items": 0,
+    "coverage_over_wanted_item_ids": 1.0,
+    "reduction_ratio_vs_items_input_valid_rows": 0.9337565175517812
+  }
+}
