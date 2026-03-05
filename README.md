@@ -41,7 +41,7 @@ For detailed protocol and conventions, see:
 ## Repository Layout
 
 ```text
-configs/experiments/           # embedding experiment configs
+configs/experiments/tac/       # TAC embedding experiment configs
 docs/dev_guide.md              # development protocol
 reports/data_profile/          # data build reports
 src/data/                      # build_items / build_interactions / build_eval
@@ -140,7 +140,7 @@ Use `data/processed/items_eval_subset.jsonl` as `--items-input` in embedding run
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run python src/embedding/generate_item_embeddings.py \
-  --experiment-config configs/experiments/exp_bge_tac.yaml \
+  --experiment-config configs/experiments/tac/exp_bge_tac.yaml \
   --items-input data/processed/items.jsonl \
   --device mps \
   --allow-device-fallback \
@@ -210,13 +210,14 @@ UV_CACHE_DIR=.uv-cache uv run python src/eval/run_eval.py \
 
 ## Experiment Configs
 
-Current configs in `configs/experiments/`:
+Current TAC configs in `configs/experiments/tac/`:
 
 - `exp_bge_tac.yaml`
-- `exp_bge_text_concat_v1.yaml`
-- `exp_bge_weighted_v1.yaml`
 - `exp_qwen3_0_6b_tac.yaml`
 - `exp_qwen3_4b_tac.yaml`
+- `exp_qwen3_8b_tac.yaml`
+- `exp_nvidia_llama_embed_nemotron_8b_tac.yaml`
+- `exp_multilingual_e5_large_instruct_tac.yaml`
 
 Common schema:
 
