@@ -1,32 +1,16 @@
 # TextEmbed-Book-RecSys
 
-Offline evaluation pipeline for text-embedding-based book recommendation on Amazon Reviews 2023 (Books).
+Offline evaluation pipeline for embedding-based **semantic retrieval** on Amazon Reviews 2023 (Books).
 
-Current implemented stages:
+## Overview
 
-- Data preprocessing (`items.jsonl`, `interactions.jsonl`, `eval.jsonl`)
-- Item embedding generation (local-only model loading)
-- ANN neighbor inspection tool
-- Offline retrieval evaluation (`run_eval.py`)
-- Unit tests for data and embedding core logic
+This repository provides an end-to-end offline workflow:
 
-## Table Of Contents
-
-- [Project Scope](#project-scope)
-- [Repository Layout](#repository-layout)
-- [Environment Setup](#environment-setup)
-- [Data Preparation](#data-preparation)
-- [Pipeline Quickstart](#pipeline-quickstart)
-- [Experiment Configs](#experiment-configs)
-- [Output Artifacts](#output-artifacts)
-- [Run Tests](#run-tests)
-- [Troubleshooting](#troubleshooting)
-
-## Project Scope
-
-Primary task:
-
-- Item-to-Item semantic retrieval
+1. Build cleaned item metadata (`items.jsonl`)
+2. Build cleaned interactions (`interactions.jsonl`)
+3. Build eval queries (`eval.jsonl`)
+4. Generate item embeddings from experiment config
+5. Evaluate retrieval metrics (Recall/NDCG/MRR)
 
 Primary metrics:
 
@@ -34,53 +18,64 @@ Primary metrics:
 - NDCG@10, NDCG@50
 - MRR@10, MRR@50
 
-For detailed protocol and conventions, see:
-
-- `docs/dev_guide.md`
+Detailed protocol lives in [`docs/dev_guide.md`](docs/dev_guide.md).
 
 ## Repository Layout
 
 ```text
-configs/experiments/tac/       # TAC embedding experiment configs
-docs/dev_guide.md              # development protocol
-reports/data_profile/          # data build reports
-src/data/                      # build_items / build_interactions / build_eval
-src/embedding/                 # embedding generator
-src/retrieval/                 # ANN utilities and neighbor review tool
-src/eval/                      # retrieval evaluation runner
-tests/                         # unit tests
+configs/
+  experiments/
+    tac/                      # TAC-style single-view experiments
+    other/                    # concat / weighted multi-view experiments
+docs/
+  dev_guide.md
+src/
+  data/
+    build_items.py
+    build_interactions.py
+    build_eval.py
+    build_items_subset_from_eval.py
+  embedding/
+    generate_item_embeddings.py
+  retrieval/
+    ann_utils.py
+    review_item_neighbors.py
+  eval/
+    run_eval.py
+tests/
 ```
 
-## Environment Setup
-
-Python and package manager:
+## Requirements
 
 - Python 3.10
-- uv
+- `uv`
+- Local Hugging Face model cache (embedding is local-only by design)
 
-Setup:
+## Environment Setup
 
 ```bash
 uv python install 3.10
 uv venv --python 3.10
-uv sync --extra dev
-export UV_CACHE_DIR=.uv-cache
+
+# Install runtime dependencies (no pyproject.toml required)
+UV_CACHE_DIR=.uv-cache uv pip install --python .venv/bin/python \
+  numpy torch transformers faiss-cpu pyyaml
 ```
 
-Run commands with `uv`:
+Run all scripts via `uv`:
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run python <script>.py ...
 ```
 
-## Data Preparation
+## Data
 
-This repo expects uncompressed JSONL inputs:
+Expected raw files are **uncompressed** JSONL:
 
 - `data/raw/meta_Books.jsonl`
 - `data/raw/Books.jsonl`
 
-Example download:
+Download example:
 
 ```bash
 mkdir -p data/raw
@@ -88,7 +83,7 @@ curl -L --fail "https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023/
 curl -L --fail "https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023/resolve/main/raw/review_categories/Books.jsonl" -o data/raw/Books.jsonl
 ```
 
-## Pipeline Quickstart
+## Quickstart
 
 ### 1) Build items
 
@@ -99,7 +94,7 @@ UV_CACHE_DIR=.uv-cache uv run python src/data/build_items.py \
   --report reports/data_profile/build_items_report.json
 ```
 
-### 2) Build cleaned interactions
+### 2) Build interactions
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run python src/data/build_interactions.py \
@@ -124,7 +119,7 @@ UV_CACHE_DIR=.uv-cache uv run python src/data/build_eval.py \
   --seed 42
 ```
 
-### 3.5) Build smaller items subset from eval (optional, for faster embedding iteration)
+### 4) (Optional) Build smaller items subset from eval
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run python src/data/build_items_subset_from_eval.py \
@@ -134,9 +129,9 @@ UV_CACHE_DIR=.uv-cache uv run python src/data/build_items_subset_from_eval.py \
   --report reports/data_profile/build_items_subset_from_eval_report.json
 ```
 
-Use `data/processed/items_eval_subset.jsonl` as `--items-input` in embedding runs for fast dev iteration.
+Use subset for faster embedding iteration by passing it to `--items-input` in step 5.
 
-### 4) Generate item embeddings
+### 5) Generate embeddings
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run python src/embedding/generate_item_embeddings.py \
@@ -147,57 +142,7 @@ UV_CACHE_DIR=.uv-cache uv run python src/embedding/generate_item_embeddings.py \
   --batch-size 64
 ```
 
-Important constraints:
-
-- `model.name` in config must be Hugging Face repo-id format (`namespace/model`).
-- Model loading is local-only.
-- Model files must already exist under `~/.cache/huggingface/hub`.
-
-### 5) Review ANN neighbors (optional)
-
-```bash
-UV_CACHE_DIR=.uv-cache uv run python src/retrieval/review_item_neighbors.py \
-  --run-output-dir outputs/embeddings/BAAI__bge-m3/exp_bge_tac/<run_id> \
-  --items-input data/processed/items.jsonl \
-  --top-k 5 \
-  --index-type hnsw
-```
-
 ### 6) Run retrieval evaluation
-
-```bash
-UV_CACHE_DIR=.uv-cache uv run python src/eval/run_eval.py \
-  --eval-input data/processed/eval.jsonl \
-  --embedding-dir outputs/embeddings/BAAI__bge-m3/exp_bge_tac/<run_id> \
-  --output-root outputs/eval \
-  --max-query 200 \
-  --topk 10,50 \
-  --index-type hnsw
-```
-
-Evaluation CLI notes:
-
-- `--embedding-dir` points to one embedding run directory and must contain:
-  - `item_embeddings.npy`
-  - `item_ids.jsonl`
-- `--eval-run-id` is optional; if omitted it uses local timestamp `YYYYMMDDHHMMSS`.
-- `--max-query` is optional:
-  - `0` means evaluate all valid queries
-  - `>0` means evaluate only first N valid queries (recommended for smoke tests)
-- `--index-type`:
-  - `hnsw` recommended for full eval on large datasets
-  - `flat` is exact but much slower at current scale
-
-Output layout per run:
-
-- `outputs/eval/<eval_run_id>/predictions.jsonl`
-  - per-query topK retrieval result with `target_rank`
-- `outputs/eval/<eval_run_id>/run_eval_report.json`
-  - aggregate metrics and filtering stats
-- `outputs/eval/<eval_run_id>/info.json`
-  - run metadata (eval input hash, embedding source, retrieval params, output paths)
-
-Example full eval command (all valid queries):
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run python src/eval/run_eval.py \
@@ -210,64 +155,185 @@ UV_CACHE_DIR=.uv-cache uv run python src/eval/run_eval.py \
 
 ## Experiment Configs
 
-Current TAC configs in `configs/experiments/tac/`:
+Config files are under:
 
-- `exp_bge_tac.yaml`
-- `exp_qwen3_0_6b_tac.yaml`
-- `exp_qwen3_4b_tac.yaml`
-- `exp_qwen3_8b_tac.yaml`
-- `exp_nvidia_llama_embed_nemotron_8b_tac.yaml`
-- `exp_multilingual_e5_large_instruct_tac.yaml`
+- `configs/experiments/tac/*.yaml`
+- `configs/experiments/other/*.yaml`
 
-Common schema:
+### Config schema
 
 ```yaml
-experiment_id: exp_xxx
+experiment_id: exp_bge_weighted_v1
+
 model:
   name: BAAI/bge-m3
   embedding_dim: 1024
   max_length: 512
   normalize_embeddings: true
+  # trust_remote_code: false
+
 text_views:
   views:
-    - view_id: view_tac
-      fields: [title, author, categories]
+    - view_id: view_title
+      fields: [title, subtitle, author]
       template: |
         Title: {title}
+        Subtitle: {subtitle}
         Author: {author}
-        Categories: {categories}
+
 fusion:
-  method: identity
-  input_views: [view_tac]
-  normalization: false
+  method: weighted_mean   # identity | weighted_mean
+  input_views: [view_title]
+  weights:
+    view_title: 1.0
+  normalization: true     # controls post-fusion normalization only
 ```
 
-## Output Artifacts
+### Config field reference
 
-Main outputs:
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `experiment_id` | string | yes | Unique experiment identifier, used in output path. |
+| `model.name` | string | yes | Hugging Face repo id (`namespace/model`). |
+| `model.embedding_dim` | int | yes | Final embedding dimension (must be <= model output dim). |
+| `model.max_length` | int | yes | Token truncation length. |
+| `model.normalize_embeddings` | bool | yes | Normalize each model output embedding before fusion. |
+| `model.trust_remote_code` | bool | no | Needed for models that require custom code. |
+| `text_views.views[].view_id` | string | yes | View identifier. Must be unique. |
+| `text_views.views[].fields` | list[string] | yes | Item fields used to fill template. |
+| `text_views.views[].template` | string | yes | Render template for the view. |
+| `fusion.method` | enum | yes | `identity` or `weighted_mean`. |
+| `fusion.input_views` | list[string] | yes | View ids to fuse. Must exist in `text_views.views`. |
+| `fusion.weights` | map | conditional | Required when `fusion.method=weighted_mean`. |
+| `fusion.normalization` | bool | yes | Whether to normalize after fusion. |
+
+Notes:
+
+- `identity` requires exactly one `fusion.input_views` entry.
+- Canonical `fusion.method` values are strictly: `identity`, `weighted_mean`.
+
+## CLI Reference
+
+### `src/data/build_items.py`
+
+| Arg | Default | Description |
+|---|---|---|
+| `--input` | `data/raw/meta_Books.jsonl` | Raw metadata input JSONL. |
+| `--output` | `data/processed/items.jsonl` | Cleaned items output JSONL. |
+| `--report` | `reports/data_profile/build_items_report.json` | Build report output path. |
+| `--tmp-db` | `data/processed/.tmp_build_items.sqlite3` | Temporary sqlite for dedup / merge logic. |
+
+### `src/data/build_interactions.py`
+
+| Arg | Default | Description |
+|---|---|---|
+| `--books-input` | `data/raw/Books.jsonl` | Raw interactions input JSONL. |
+| `--items-input` | `data/processed/items.jsonl` | Filter interactions to valid item ids from this file. |
+| `--output` | `data/processed/interactions.jsonl` | Cleaned interactions output JSONL. |
+| `--report` | `reports/data_profile/build_interactions_report.json` | Build report output path. |
+| `--seed` | `42` | Protocol metadata seed (reserved for deterministic config tracking). |
+
+### `src/data/build_eval.py`
+
+| Arg | Default | Description |
+|---|---|---|
+| `--interactions-input` | `data/processed/interactions.jsonl` | Input interactions. |
+| `--queries-output` | `data/processed/eval.jsonl` | Output eval query set. |
+| `--report-output` | `reports/data_profile/build_eval_report.json` | Build report output path. |
+| `--rating-threshold` | `4.0` | Positive sample rule: `rating >= threshold`. |
+| `--min-user-pos` | `1` | Minimum positives per user after filtering. |
+| `--min-item-pos` | `1` | Minimum positives per item after filtering. |
+| `--query-history-n` | `1` | Number of historical positives used as query context. |
+| `--seed` | `42` | Protocol metadata seed. |
+
+### `src/data/build_items_subset_from_eval.py`
+
+| Arg | Default | Description |
+|---|---|---|
+| `--eval-input` | `data/processed/eval.jsonl` | Eval set containing query/target ids. |
+| `--items-input` | `data/processed/items.jsonl` | Full items file. |
+| `--output` | `data/processed/items_eval_subset.jsonl` | Reduced items file. |
+| `--report` | `reports/data_profile/build_items_subset_from_eval_report.json` | Build report output path. |
+
+### `src/embedding/generate_item_embeddings.py`
+
+| Arg | Default | Description |
+|---|---|---|
+| `--experiment-config` | required | Experiment YAML path. |
+| `--items-input` | `data/processed/items.jsonl` | Items input used for rendering views. |
+| `--output-root` | `outputs/embeddings` | Embedding artifact root. |
+| `--runs-root` | `outputs/runs` | Run snapshot root (`config.json`). |
+| `--device` | `mps` | Requested device (`mps`/`cuda`/`cpu`). |
+| `--allow-device-fallback` | false | Fallback to CPU if requested device unavailable. |
+| `--seed` | `42` | RNG seed. |
+| `--batch-size` | `64` | Encoding batch size. |
+| `--save-view-embeddings` | false | Also save per-view embeddings (`item_embeddings__<view>.npy`). |
+| `--max-items` | none | Debug cap on number of items to encode. |
+
+Important behavior:
+
+- Local-only model loading (`local_files_only=True`); model must already exist in `~/.cache/huggingface/hub`.
+- Output path: `outputs/embeddings/<model_dir>/<experiment_id>/<run_id>/...`
+  - `model_dir` is `model.name` with `/` replaced by `__`.
+
+### `src/eval/run_eval.py`
+
+| Arg | Default | Description |
+|---|---|---|
+| `--eval-input` | `data/processed/eval.jsonl` | Eval query set input. |
+| `--embedding-dir` | required | Embedding run dir containing `item_embeddings.npy` and `item_ids.jsonl`. |
+| `--output-root` | `outputs/eval` | Output root; writes into `<output_root>/<eval_run_id>/`. |
+| `--eval-run-id` | timestamp | Optional eval run id (`YYYYMMDDHHMMSS` if omitted). |
+| `--max-query` | `0` | `0` = all valid queries; `>0` = first N valid queries. |
+| `--topk` | `10,50` | Comma-separated K list. |
+| `--index-type` | `flat` | `flat` or `hnsw`. |
+| `--hnsw-m` | `32` | HNSW M (when `index-type=hnsw`). |
+| `--hnsw-ef-search` | `64` | HNSW efSearch (when `index-type=hnsw`). |
+| `--hnsw-ef-construction` | `200` | HNSW efConstruction (when `index-type=hnsw`). |
+| `--seed` | `42` | RNG seed for deterministic metadata/runtime behavior. |
+
+### `src/retrieval/review_item_neighbors.py`
+
+| Arg | Default | Description |
+|---|---|---|
+| `--run-output-dir` | none | Embedding run dir (auto resolves embeddings + ids paths). |
+| `--embeddings-path` | none | Explicit path to `item_embeddings.npy` (if not using run dir). |
+| `--item-ids-path` | none | Explicit path to `item_ids.jsonl` (if not using run dir). |
+| `--items-input` | `data/processed/items.jsonl` | Item metadata for readable output. |
+| `--query-item-id` | none | Query item id. |
+| `--random-query` | false | Sample query item id randomly. |
+| `--seed` | `42` | RNG seed for random query. |
+| `--top-k` | `5` | Number of neighbors shown. |
+| `--index-type` | `hnsw` | `hnsw` or `flat`. |
+| `--hnsw-m` | `32` | HNSW M. |
+| `--hnsw-ef-search` | `128` | HNSW efSearch. |
+| `--hnsw-ef-construction` | `200` | HNSW efConstruction. |
+| `--text-fields` | `title,author,categories` | Fields shown in text summary. |
+| `--no-normalize` | false | Disable L2 normalization before search. |
+
+## Outputs
+
+### Data stage
 
 - `data/processed/items.jsonl`
 - `data/processed/interactions.jsonl`
 - `data/processed/eval.jsonl`
-- `reports/data_profile/build_items_report.json`
-- `reports/data_profile/build_interactions_report.json`
-- `reports/data_profile/build_eval_report.json`
-- `reports/data_profile/build_items_subset_from_eval_report.json`
-- `outputs/embeddings/<model>/<experiment_id>/<run_id>/item_embeddings.npy`
-- `outputs/embeddings/<model>/<experiment_id>/<run_id>/item_ids.jsonl`
+- `reports/data_profile/*.json`
+
+### Embedding stage
+
+- `outputs/embeddings/<model_dir>/<experiment_id>/<run_id>/item_embeddings.npy`
+- `outputs/embeddings/<model_dir>/<experiment_id>/<run_id>/item_ids.jsonl`
+- Optional: `item_embeddings__<view_id>.npy` when `--save-view-embeddings` is enabled.
+- `outputs/runs/<run_id>/config.json` (run snapshot + config hash)
+
+### Eval stage
+
 - `outputs/eval/<eval_run_id>/predictions.jsonl`
 - `outputs/eval/<eval_run_id>/run_eval_report.json`
 - `outputs/eval/<eval_run_id>/info.json`
-- `outputs/runs/<run_id>/config.json`
-
-Notes:
-
-- `data/` and `outputs/` are git-ignored by default.
-- `run_id` is generated automatically by the embedding script.
 
 ## Run Tests
-
-Run all core unit tests:
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run python -m unittest \
@@ -281,10 +347,9 @@ UV_CACHE_DIR=.uv-cache uv run python -m unittest \
 
 ## Troubleshooting
 
-Model not found:
+### Model not found in cache
 
-- Error usually means required files are missing from local Hugging Face cache.
-- Pre-download once, then re-run:
+This pipeline does not auto-download model files during embedding. Pre-download first:
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run python - <<'PY'
@@ -294,11 +359,13 @@ AutoModel.from_pretrained("BAAI/bge-m3")
 PY
 ```
 
-Device issues:
+### Device issues
 
-- Use `--allow-device-fallback` to fallback from unavailable `mps/cuda` to `cpu`.
+- Add `--allow-device-fallback` to fallback from unavailable `mps/cuda` to CPU.
 
-Memory issues:
+### Memory / speed issues
 
 - Reduce `--batch-size`.
-- Use `--max-items` for smoke runs.
+- Use `--max-items` for embedding smoke tests.
+- Use `--max-query` for eval smoke tests.
+- Prefer `--index-type hnsw` for large-scale eval speed.
