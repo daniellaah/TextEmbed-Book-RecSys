@@ -536,6 +536,150 @@ class RunEvalTests(unittest.TestCase):
             report_last2 = json.loads(run_last2["report"].read_text(encoding="utf-8"))
             self.assertEqual(report_last2["config"]["query_history_n"], 2)
 
+    def test_embedding_dim_selects_requested_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            embedding_dir = tmp_path / "emb" / "BAAI__bge-m3" / "20260304000000"
+            embedding_dir.mkdir(parents=True, exist_ok=True)
+            item_ids_path = embedding_dir / "item_ids.jsonl"
+            eval_input_path = tmp_path / "eval.jsonl"
+            output_root = tmp_path / "outputs" / "eval"
+
+            with item_ids_path.open("w", encoding="utf-8") as f:
+                for item_id in ["A", "B", "C"]:
+                    f.write(json.dumps({"item_id": item_id}, ensure_ascii=False) + "\n")
+            np.save(
+                embedding_dir / "item_embeddings_2.npy",
+                np.array(
+                    [
+                        [1.0, 0.0],
+                        [0.9, 0.1],
+                        [0.0, 1.0],
+                    ],
+                    dtype=np.float32,
+                ),
+            )
+            np.save(
+                embedding_dir / "item_embeddings_3.npy",
+                np.array(
+                    [
+                        [1.0, 0.0, 0.0],
+                        [0.9, 0.1, 0.0],
+                        [0.0, 1.0, 0.0],
+                    ],
+                    dtype=np.float32,
+                ),
+            )
+
+            with eval_input_path.open("w", encoding="utf-8") as f:
+                f.write(
+                    json.dumps(
+                        {"user_id": "U1", "query_item_ids": ["A"], "target_item_id": "B"},
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+            run = self._run_script(
+                eval_input=eval_input_path,
+                embedding_dir=embedding_dir,
+                output_root=output_root,
+                eval_run_id="run_dim_2",
+                embedding_dim="2",
+            )
+            report = json.loads(run["report"].read_text(encoding="utf-8"))
+            info = json.loads(run["info"].read_text(encoding="utf-8"))
+            self.assertEqual(report["config"]["requested_embedding_dim"], 2)
+            self.assertEqual(report["index_stats"]["embedding_dim"], 2)
+            self.assertEqual(info["embedding"]["requested_embedding_dim"], 2)
+            self.assertEqual(info["embedding"]["resolved_embedding_dim"], 2)
+
+    def test_embedding_dim_all_writes_per_dim_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            embedding_dir = tmp_path / "emb" / "BAAI__bge-m3" / "20260304000000"
+            embedding_dir.mkdir(parents=True, exist_ok=True)
+            item_ids_path = embedding_dir / "item_ids.jsonl"
+            eval_input_path = tmp_path / "eval.jsonl"
+            output_root = tmp_path / "outputs" / "eval"
+            eval_run_id = "run_dim_all"
+
+            with item_ids_path.open("w", encoding="utf-8") as f:
+                for item_id in ["A", "B", "C"]:
+                    f.write(json.dumps({"item_id": item_id}, ensure_ascii=False) + "\n")
+            np.save(
+                embedding_dir / "item_embeddings_2.npy",
+                np.array(
+                    [
+                        [1.0, 0.0],
+                        [0.9, 0.1],
+                        [0.0, 1.0],
+                    ],
+                    dtype=np.float32,
+                ),
+            )
+            np.save(
+                embedding_dir / "item_embeddings_3.npy",
+                np.array(
+                    [
+                        [1.0, 0.0, 0.0],
+                        [0.9, 0.1, 0.0],
+                        [0.0, 1.0, 0.0],
+                    ],
+                    dtype=np.float32,
+                ),
+            )
+
+            with eval_input_path.open("w", encoding="utf-8") as f:
+                f.write(
+                    json.dumps(
+                        {"user_id": "U1", "query_item_ids": ["A"], "target_item_id": "B"},
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+            cmd = [
+                sys.executable,
+                str(SCRIPT_PATH),
+                "--eval-input",
+                str(eval_input_path),
+                "--embedding-dir",
+                str(embedding_dir),
+                "--embedding-dim",
+                "all",
+                "--output-root",
+                str(output_root),
+                "--eval-run-id",
+                eval_run_id,
+                "--topk",
+                "1,2",
+                "--index-type",
+                "flat",
+                "--seed",
+                "42",
+            ]
+            subprocess.run(
+                cmd,
+                cwd=REPO_ROOT,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            run_dir = output_root / eval_run_id
+            summary_report = json.loads((run_dir / "run_eval_report.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary_report["config"]["embedding_dim"], "all")
+            self.assertEqual(len(summary_report["runs"]), 2)
+
+            dim2_report = json.loads((run_dir / "dim_2" / "run_eval_report.json").read_text(encoding="utf-8"))
+            dim3_report = json.loads((run_dir / "dim_3" / "run_eval_report.json").read_text(encoding="utf-8"))
+            self.assertEqual(dim2_report["index_stats"]["embedding_dim"], 2)
+            self.assertEqual(dim3_report["index_stats"]["embedding_dim"], 3)
+            self.assertTrue((run_dir / "dim_2" / "predictions.jsonl").exists())
+            self.assertTrue((run_dir / "dim_3" / "predictions.jsonl").exists())
+
     def _run_script(
         self,
         eval_input: Path,
@@ -551,6 +695,7 @@ class RunEvalTests(unittest.TestCase):
         rrf_k: int = 60,
         recency_weighting: str = "none",
         recency_alpha: float = 1.0,
+        embedding_dim: str | None = None,
     ) -> dict[str, Path]:
         cmd = [
             sys.executable,
@@ -586,6 +731,8 @@ class RunEvalTests(unittest.TestCase):
             "--seed",
             "42",
         ]
+        if embedding_dim is not None:
+            cmd.extend(["--embedding-dim", embedding_dim])
         if max_query > 0:
             cmd.extend(["--max-query", str(max_query)])
         subprocess.run(

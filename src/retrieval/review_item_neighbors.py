@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import random
+import re
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ from ann_utils import (
     load_item_ids,
     search_topk_by_item_id,
 )
+
+EMBEDDING_DIM_FILE_RE = re.compile(r"^item_embeddings_(\d+)\.npy$")
 
 
 def normalize_text(value: Any) -> str:
@@ -38,12 +41,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--run-output-dir",
         default=None,
-        help="Embedding run dir containing item_embeddings.npy and item_ids.jsonl.",
+        help="Embedding run dir containing item_embeddings_<dim>.npy and item_ids.jsonl.",
     )
     parser.add_argument(
         "--embeddings-path",
         default=None,
-        help="Path to item_embeddings.npy. Optional when --run-output-dir is provided.",
+        help="Path to one embedding file. Optional when --run-output-dir is provided.",
+    )
+    parser.add_argument(
+        "--embedding-dim",
+        default="max",
+        help=(
+            "Which embedding dim file to use when --run-output-dir is provided and "
+            "--embeddings-path is omitted. Use integer or 'max'."
+        ),
     )
     parser.add_argument(
         "--item-ids-path",
@@ -101,7 +112,55 @@ def parse_args() -> argparse.Namespace:
         parser.error("--top-k must be > 0.")
     if args.random_query and args.query_item_id:
         parser.error("--random-query and --query-item-id cannot be used together.")
+    embedding_dim_arg = normalize_text(args.embedding_dim).lower()
+    if embedding_dim_arg != "max":
+        try:
+            value = int(embedding_dim_arg)
+        except ValueError:
+            parser.error("--embedding-dim must be an integer or 'max'.")
+        if value <= 0:
+            parser.error("--embedding-dim integer value must be > 0.")
+        args.embedding_dim = str(value)
+    else:
+        args.embedding_dim = "max"
     return args
+
+
+def collect_embedding_dim_files(run_dir: Path) -> dict[int, Path]:
+    files: dict[int, Path] = {}
+    for path in run_dir.iterdir():
+        if not path.is_file():
+            continue
+        match = EMBEDDING_DIM_FILE_RE.fullmatch(path.name)
+        if not match:
+            continue
+        files[int(match.group(1))] = path
+    return dict(sorted(files.items(), key=lambda x: x[0]))
+
+
+def resolve_embedding_path(run_dir: Path, embedding_dim: str) -> Path:
+    dim_files = collect_embedding_dim_files(run_dir)
+    if embedding_dim == "max":
+        if dim_files:
+            max_dim = max(dim_files.keys())
+            return dim_files[max_dim]
+    else:
+        requested_dim = int(embedding_dim)
+        path = dim_files.get(requested_dim)
+        if path is not None:
+            return path
+        available_dims = sorted(dim_files.keys())
+        raise FileNotFoundError(
+            f"Requested --embedding-dim={requested_dim} not found in {run_dir}. "
+            f"Available dims: {available_dims}"
+        )
+    legacy_path = run_dir / "item_embeddings.npy"
+    if legacy_path.exists():
+        return legacy_path
+    raise FileNotFoundError(
+        f"No embedding file found in {run_dir}. "
+        "Expected item_embeddings_<dim>.npy (or legacy item_embeddings.npy)."
+    )
 
 
 def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path]:
@@ -111,7 +170,7 @@ def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path]:
 
     if run_dir is not None:
         if embeddings_path is None:
-            embeddings_path = run_dir / "item_embeddings.npy"
+            embeddings_path = resolve_embedding_path(run_dir, args.embedding_dim)
         if item_ids_path is None:
             item_ids_path = run_dir / "item_ids.jsonl"
 

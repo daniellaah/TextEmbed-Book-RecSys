@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import random
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -51,6 +52,22 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+EMBEDDING_DIM_FILE_RE = re.compile(r"^item_embeddings_(\d+)\.npy$")
+
+
+def collect_embedding_dim_files(embedding_dir: Path) -> dict[int, Path]:
+    files: dict[int, Path] = {}
+    for path in embedding_dir.iterdir():
+        if not path.is_file():
+            continue
+        match = EMBEDDING_DIM_FILE_RE.fullmatch(path.name)
+        if not match:
+            continue
+        dim = int(match.group(1))
+        files[dim] = path
+    return dict(sorted(files.items(), key=lambda x: x[0]))
 
 
 def load_embedding_run_config(embedding_dir: Path) -> dict[str, Any] | None:
@@ -99,6 +116,55 @@ def infer_embedding_identity(embedding_dir: Path) -> dict[str, str]:
     }
 
 
+def resolve_embedding_files(
+    embedding_dir: Path,
+    embedding_dim_arg: str,
+) -> list[tuple[int | None, Path]]:
+    dim_files = collect_embedding_dim_files(embedding_dir)
+    legacy_file = embedding_dir / "item_embeddings.npy"
+    has_legacy = legacy_file.exists()
+
+    if embedding_dim_arg == "all":
+        if dim_files:
+            return [(dim, path) for dim, path in dim_files.items()]
+        if has_legacy:
+            return [(None, legacy_file)]
+        raise FileNotFoundError(
+            f"No embedding files found in {embedding_dir}. "
+            "Expected item_embeddings_<dim>.npy (or legacy item_embeddings.npy)."
+        )
+
+    if embedding_dim_arg == "max":
+        if dim_files:
+            max_dim = max(dim_files)
+            return [(max_dim, dim_files[max_dim])]
+        if has_legacy:
+            return [(None, legacy_file)]
+        raise FileNotFoundError(
+            f"No embedding files found in {embedding_dir}. "
+            "Expected item_embeddings_<dim>.npy (or legacy item_embeddings.npy)."
+        )
+
+    requested_dim = int(embedding_dim_arg)
+    if dim_files:
+        path = dim_files.get(requested_dim)
+        if path is None:
+            raise FileNotFoundError(
+                f"Requested --embedding-dim={requested_dim} not found in {embedding_dir}. "
+                f"Available dims: {sorted(dim_files.keys())}"
+            )
+        return [(requested_dim, path)]
+    if has_legacy:
+        raise FileNotFoundError(
+            f"Requested --embedding-dim={requested_dim}, but {embedding_dir} only has legacy "
+            "item_embeddings.npy without dimension suffix."
+        )
+    raise FileNotFoundError(
+        f"No embedding files found in {embedding_dir}. "
+        "Expected item_embeddings_<dim>.npy (or legacy item_embeddings.npy)."
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run retrieval evaluation from eval.jsonl.")
     parser.add_argument(
@@ -109,7 +175,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--embedding-dir",
         required=True,
-        help="Embedding artifact directory containing item_ids.jsonl and item_embeddings.npy.",
+        help=(
+            "Embedding artifact directory containing item_ids.jsonl and "
+            "item_embeddings_<dim>.npy (or legacy item_embeddings.npy)."
+        ),
+    )
+    parser.add_argument(
+        "--embedding-dim",
+        default="max",
+        help=(
+            "Embedding dimension to evaluate. "
+            "Use integer like 128/1024, 'max' for largest available, or 'all' for all dimensions."
+        ),
     )
     parser.add_argument(
         "--output-root",
@@ -221,6 +298,17 @@ def parse_args() -> argparse.Namespace:
         parser.error("--rrf-k must be > 0")
     if args.recency_alpha < 0:
         parser.error("--recency-alpha must be >= 0")
+    embedding_dim_arg = normalize_text(args.embedding_dim).lower()
+    if embedding_dim_arg not in {"all", "max"}:
+        try:
+            value = int(embedding_dim_arg)
+        except ValueError:
+            parser.error("--embedding-dim must be an integer, 'max', or 'all'")
+        if value <= 0:
+            parser.error("--embedding-dim integer value must be > 0")
+        args.embedding_dim = str(value)
+    else:
+        args.embedding_dim = embedding_dim_arg
 
     args.topk_list = parse_topk_list(args.topk)
     return args
@@ -394,32 +482,26 @@ def metric_value(rank: int | None, k: int) -> tuple[float, float, float]:
     return recall, mrr, ndcg
 
 
-def main() -> None:
-    args = parse_args()
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-
-    eval_input = Path(args.eval_input)
-    embedding_dir = Path(args.embedding_dir)
-    item_ids_input = embedding_dir / "item_ids.jsonl"
-    embeddings_input = embedding_dir / "item_embeddings.npy"
-
-    if not item_ids_input.exists():
-        raise FileNotFoundError(f"Missing item_ids.jsonl in embedding dir: {item_ids_input}")
-    if not embeddings_input.exists():
-        raise FileNotFoundError(f"Missing item_embeddings.npy in embedding dir: {embeddings_input}")
-
-    eval_run_id = args.eval_run_id.strip() or datetime.now().strftime("%Y%m%d%H%M%S")
-    run_output_dir = Path(args.output_root) / eval_run_id
-    predictions_output = run_output_dir / "predictions.jsonl"
-    report_output = run_output_dir / "run_eval_report.json"
-    info_output = run_output_dir / "info.json"
-
+def run_eval_once(
+    *,
+    args: argparse.Namespace,
+    eval_input: Path,
+    eval_input_sha256: str,
+    embedding_dir: Path,
+    item_ids_input: Path,
+    embeddings_input: Path,
+    item_ids: list[str],
+    item_id_to_row: dict[str, int],
+    eval_run_id: str,
+    predictions_output: Path,
+    report_output: Path,
+    info_output: Path,
+    requested_embedding_dim: int | None,
+) -> dict[str, Any]:
     ensure_parent_dir(predictions_output)
     ensure_parent_dir(report_output)
     ensure_parent_dir(info_output)
 
-    item_ids, item_id_to_row = load_item_ids(item_ids_input)
     embeddings = load_embeddings(embeddings_input)
     if embeddings.shape[0] != len(item_ids):
         raise ValueError(
@@ -613,7 +695,6 @@ def main() -> None:
 
     embedding_identity = infer_embedding_identity(embedding_dir)
     eval_input_resolved = eval_input.resolve()
-    eval_sha = file_sha256(eval_input)
     generated_at = datetime.now(timezone.utc).isoformat()
 
     report = {
@@ -622,10 +703,11 @@ def main() -> None:
             "seed": args.seed,
             "eval_run_id": eval_run_id,
             "eval_input": str(eval_input_resolved),
-            "eval_input_sha256": eval_sha,
+            "eval_input_sha256": eval_input_sha256,
             "embedding_dir": str(embedding_dir.resolve()),
             "item_ids_input": str(item_ids_input.resolve()),
             "embeddings_input": str(embeddings_input.resolve()),
+            "requested_embedding_dim": requested_embedding_dim,
             "output_root": str(Path(args.output_root).resolve()),
             "predictions_output": str(predictions_output.resolve()),
             "report_output": str(report_output.resolve()),
@@ -681,12 +763,14 @@ def main() -> None:
         "eval_run_id": eval_run_id,
         "eval_input": {
             "path": str(eval_input_resolved),
-            "sha256": eval_sha,
+            "sha256": eval_input_sha256,
         },
         "embedding": {
             "dir": str(embedding_dir.resolve()),
             "item_ids_path": str(item_ids_input.resolve()),
             "embeddings_path": str(embeddings_input.resolve()),
+            "requested_embedding_dim": requested_embedding_dim,
+            "resolved_embedding_dim": int(vectors.shape[1]),
             **embedding_identity,
         },
         "retrieval": {
@@ -707,13 +791,120 @@ def main() -> None:
             "seed": args.seed,
         },
         "outputs": {
-            "run_output_dir": str(run_output_dir.resolve()),
+            "run_output_dir": str(predictions_output.parent.resolve()),
             "predictions_output": str(predictions_output.resolve()),
             "report_output": str(report_output.resolve()),
             "info_output": str(info_output.resolve()),
         },
     }
     info_output.write_text(json.dumps(info, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return report
+
+
+def main() -> None:
+    args = parse_args()
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+
+    eval_input = Path(args.eval_input)
+    embedding_dir = Path(args.embedding_dir)
+    item_ids_input = embedding_dir / "item_ids.jsonl"
+    if not item_ids_input.exists():
+        raise FileNotFoundError(f"Missing item_ids.jsonl in embedding dir: {item_ids_input}")
+    embedding_files = resolve_embedding_files(embedding_dir, args.embedding_dim)
+
+    eval_run_id = args.eval_run_id.strip() or datetime.now().strftime("%Y%m%d%H%M%S")
+    run_output_dir = Path(args.output_root) / eval_run_id
+    run_output_dir.mkdir(parents=True, exist_ok=True)
+
+    item_ids, item_id_to_row = load_item_ids(item_ids_input)
+    eval_sha = file_sha256(eval_input)
+    run_reports: list[dict[str, Any]] = []
+
+    for dim, embeddings_input in embedding_files:
+        if len(embedding_files) == 1:
+            dim_output_dir = run_output_dir
+        else:
+            dim_label = "legacy" if dim is None else str(dim)
+            dim_output_dir = run_output_dir / f"dim_{dim_label}"
+        predictions_output = dim_output_dir / "predictions.jsonl"
+        report_output = dim_output_dir / "run_eval_report.json"
+        info_output = dim_output_dir / "info.json"
+
+        report = run_eval_once(
+            args=args,
+            eval_input=eval_input,
+            eval_input_sha256=eval_sha,
+            embedding_dir=embedding_dir,
+            item_ids_input=item_ids_input,
+            embeddings_input=embeddings_input,
+            item_ids=item_ids,
+            item_id_to_row=item_id_to_row,
+            eval_run_id=eval_run_id,
+            predictions_output=predictions_output,
+            report_output=report_output,
+            info_output=info_output,
+            requested_embedding_dim=dim,
+        )
+        run_reports.append(
+            {
+                "requested_embedding_dim": dim,
+                "resolved_embedding_dim": report["index_stats"]["embedding_dim"],
+                "embeddings_input": str(embeddings_input.resolve()),
+                "predictions_output": str(predictions_output.resolve()),
+                "report_output": str(report_output.resolve()),
+                "info_output": str(info_output.resolve()),
+                "valid_eval_rows": report["eval_stats"]["valid_eval_rows"],
+                "metrics": report["metrics"],
+            }
+        )
+
+    if len(run_reports) > 1:
+        summary_report_output = run_output_dir / "run_eval_report.json"
+        summary_info_output = run_output_dir / "info.json"
+        generated_at = datetime.now(timezone.utc).isoformat()
+        summary_report = {
+            "generated_at_utc": generated_at,
+            "config": {
+                "seed": args.seed,
+                "eval_run_id": eval_run_id,
+                "eval_input": str(eval_input.resolve()),
+                "eval_input_sha256": eval_sha,
+                "embedding_dir": str(embedding_dir.resolve()),
+                "item_ids_input": str(item_ids_input.resolve()),
+                "embedding_dim": args.embedding_dim,
+                "output_root": str(Path(args.output_root).resolve()),
+                "run_output_dir": str(run_output_dir.resolve()),
+            },
+            "runs": run_reports,
+        }
+        summary_report_output.write_text(
+            json.dumps(summary_report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        summary_info = {
+            "generated_at_utc": generated_at,
+            "eval_run_id": eval_run_id,
+            "eval_input": {
+                "path": str(eval_input.resolve()),
+                "sha256": eval_sha,
+            },
+            "embedding": {
+                "dir": str(embedding_dir.resolve()),
+                "item_ids_path": str(item_ids_input.resolve()),
+                "embedding_dim": args.embedding_dim,
+            },
+            "outputs": {
+                "run_output_dir": str(run_output_dir.resolve()),
+                "report_output": str(summary_report_output.resolve()),
+                "info_output": str(summary_info_output.resolve()),
+                "runs": run_reports,
+            },
+        }
+        summary_info_output.write_text(
+            json.dumps(summary_info, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
 
 if __name__ == "__main__":

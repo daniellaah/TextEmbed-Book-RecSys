@@ -166,8 +166,17 @@ def validate_experiment_config(cfg: dict[str, Any]) -> None:
     if not model_name:
         raise ValueError("Missing 'model.name' in config.")
     validate_model_name(model_name)
-    if int(model_cfg.get("embedding_dim", 0)) <= 0:
-        raise ValueError("'model.embedding_dim' must be > 0.")
+    embedding_dims_raw = model_cfg.get("embedding_dim")
+    if not isinstance(embedding_dims_raw, list) or not embedding_dims_raw:
+        raise ValueError("'model.embedding_dim' must be a non-empty list of positive integers.")
+    embedding_dims: list[int] = []
+    for idx, value in enumerate(embedding_dims_raw):
+        dim = int(value)
+        if dim <= 0:
+            raise ValueError(f"'model.embedding_dim[{idx}]' must be > 0.")
+        embedding_dims.append(dim)
+    if sorted(set(embedding_dims)) != embedding_dims:
+        raise ValueError("'model.embedding_dim' must be strictly increasing with no duplicates.")
     if int(model_cfg.get("max_length", 0)) <= 0:
         raise ValueError("'model.max_length' must be > 0.")
     trust_remote_code = model_cfg.get("trust_remote_code", False)
@@ -270,8 +279,7 @@ def encode_text_batch(
     model: AutoModel,
     device: str,
     max_length: int,
-    embedding_dim: int,
-    normalize_embeddings: bool,
+    max_embedding_dim: int,
 ) -> tuple[torch.Tensor, int, float]:
     synchronize_device_for_timing(device)
     start = time.perf_counter()
@@ -287,9 +295,7 @@ def encode_text_batch(
     with torch.no_grad():
         outputs = model(**encoded)
         pooled = mean_pool(outputs.last_hidden_state, encoded["attention_mask"])
-        pooled = apply_embedding_dim(pooled, embedding_dim=embedding_dim)
-        if normalize_embeddings:
-            pooled = F.normalize(pooled, p=2, dim=1)
+        pooled = apply_embedding_dim(pooled, embedding_dim=max_embedding_dim)
     synchronize_device_for_timing(device)
     elapsed = time.perf_counter() - start
     return pooled.detach().cpu().to(torch.float32), token_count, elapsed
@@ -438,7 +444,8 @@ def main() -> None:
 
     model_cfg: dict[str, Any] = exp_cfg["model"]
     model_name = str(model_cfg["name"])
-    embedding_dim_config = int(model_cfg["embedding_dim"])
+    embedding_dims_config = [int(x) for x in model_cfg["embedding_dim"]]
+    max_embedding_dim_config = max(embedding_dims_config)
     max_length = int(model_cfg["max_length"])
     trust_remote_code = bool(model_cfg.get("trust_remote_code", False))
     batch_size = int(args.batch_size)
@@ -460,14 +467,21 @@ def main() -> None:
     experiment_id = str(exp_cfg["experiment_id"])
 
     run_output_dir = output_root / model_dir / run_id
-    embedding_path = run_output_dir / "item_embeddings.npy"
+    embedding_paths: dict[int, Path] = {
+        dim: run_output_dir / f"item_embeddings_{dim}.npy" for dim in embedding_dims_config
+    }
     item_ids_path = run_output_dir / "item_ids.jsonl"
 
-    view_embedding_paths: dict[str, Path] = {
-        view_id: run_output_dir / f"item_embeddings__{view_id}.npy" for view_id in views_to_encode
+    view_embedding_paths: dict[int, dict[str, Path]] = {
+        dim: {
+            view_id: run_output_dir / f"item_embeddings__{view_id}_{dim}.npy"
+            for view_id in views_to_encode
+        }
+        for dim in embedding_dims_config
     }
 
-    ensure_parent_dir(embedding_path)
+    for path in embedding_paths.values():
+        ensure_parent_dir(path)
     ensure_parent_dir(item_ids_path)
 
     print(f"[embed] run_id={run_id}")
@@ -505,9 +519,8 @@ def main() -> None:
         raise ValueError("No items found to encode.")
     print(f"[embed] total_items={total_items}")
 
-    embedding_memmap: np.memmap | None = None
-    view_memmaps: dict[str, np.memmap] = {}
-    embedding_dim: int | None = None
+    embedding_memmaps: dict[int, np.memmap] = {}
+    view_memmaps: dict[int, dict[str, np.memmap]] = {}
     offset = 0
     total_tokens_processed = 0
     total_encode_seconds = 0.0
@@ -518,7 +531,7 @@ def main() -> None:
     with item_ids_path.open("w", encoding="utf-8") as id_f:
         for batch in batched_items(items_input, batch_size=batch_size, max_items=args.max_items):
             batch_ids = [normalize_text(item["item_id"]) for item in batch]
-            batch_view_embeddings: dict[str, torch.Tensor] = {}
+            batch_view_embeddings_max_dim: dict[str, torch.Tensor] = {}
             batch_tokens = 0
             batch_encode_seconds = 0.0
 
@@ -534,47 +547,54 @@ def main() -> None:
                     model=model,
                     device=resolved_device,
                     max_length=max_length,
-                    embedding_dim=embedding_dim_config,
-                    normalize_embeddings=normalize_embeddings,
+                    max_embedding_dim=max_embedding_dim_config,
                 )
-                batch_view_embeddings[view_id] = encoded_batch
+                batch_view_embeddings_max_dim[view_id] = encoded_batch
                 total_tokens_processed += token_count
                 total_encode_seconds += elapsed_seconds
                 batch_tokens += token_count
                 batch_encode_seconds += elapsed_seconds
 
-            fused = fuse_batch_embeddings(batch_view_embeddings, fusion_cfg=fusion_cfg)
-            fused_np = fused.numpy()
-
-            if embedding_memmap is None:
-                embedding_dim = int(fused_np.shape[1])
-                if embedding_dim != embedding_dim_config:
+            batch_embeddings_by_dim: dict[int, np.ndarray] = {}
+            for dim in embedding_dims_config:
+                per_view_dim_embeddings: dict[str, torch.Tensor] = {}
+                for view_id in views_to_encode:
+                    emb = apply_embedding_dim(batch_view_embeddings_max_dim[view_id], embedding_dim=dim)
+                    if normalize_embeddings:
+                        emb = F.normalize(emb, p=2, dim=1)
+                    per_view_dim_embeddings[view_id] = emb
+                fused_dim = fuse_batch_embeddings(per_view_dim_embeddings, fusion_cfg=fusion_cfg)
+                fused_dim_np = fused_dim.numpy()
+                if int(fused_dim_np.shape[1]) != dim:
                     raise ValueError(
-                        f"Output dim mismatch: config model.embedding_dim={embedding_dim_config} "
-                        f"but fused dim={embedding_dim}."
+                        f"Output dim mismatch for dim={dim}, got fused dim={int(fused_dim_np.shape[1])}."
                     )
-                embedding_memmap = open_memmap(
-                    embedding_path,
-                    mode="w+",
-                    dtype=np.float32,
-                    shape=(total_items, embedding_dim),
-                )
-                if args.save_view_embeddings:
-                    for view_id, emb in batch_view_embeddings.items():
-                        view_memmaps[view_id] = open_memmap(
-                            view_embedding_paths[view_id],
+                batch_embeddings_by_dim[dim] = fused_dim_np
+
+                if dim not in embedding_memmaps:
+                    embedding_memmaps[dim] = open_memmap(
+                        embedding_paths[dim],
+                        mode="w+",
+                        dtype=np.float32,
+                        shape=(total_items, dim),
+                    )
+                if args.save_view_embeddings and dim not in view_memmaps:
+                    view_memmaps[dim] = {}
+                    for view_id in views_to_encode:
+                        view_memmaps[dim][view_id] = open_memmap(
+                            view_embedding_paths[dim][view_id],
                             mode="w+",
                             dtype=np.float32,
-                            shape=(total_items, int(emb.shape[1])),
+                            shape=(total_items, dim),
                         )
+                if args.save_view_embeddings:
+                    for view_id, emb in per_view_dim_embeddings.items():
+                        view_memmaps[dim][view_id][offset : offset + emb.shape[0]] = emb.numpy()
 
-            batch_size_actual = fused_np.shape[0]
-            if embedding_memmap is None:
-                raise RuntimeError("Embedding memmap was not initialized.")
-            embedding_memmap[offset : offset + batch_size_actual] = fused_np
-            if args.save_view_embeddings:
-                for view_id, emb in batch_view_embeddings.items():
-                    view_memmaps[view_id][offset : offset + batch_size_actual] = emb.numpy()
+            first_dim = embedding_dims_config[0]
+            batch_size_actual = int(batch_embeddings_by_dim[first_dim].shape[0])
+            for dim in embedding_dims_config:
+                embedding_memmaps[dim][offset : offset + batch_size_actual] = batch_embeddings_by_dim[dim]
 
             for item_id in batch_ids:
                 id_f.write(json.dumps({"item_id": item_id}, ensure_ascii=False) + "\n")
@@ -608,11 +628,13 @@ def main() -> None:
     if offset != total_items:
         raise RuntimeError(f"Processed rows mismatch: offset={offset}, total_items={total_items}")
 
-    if embedding_memmap is None or embedding_dim is None:
+    if not embedding_memmaps:
         raise RuntimeError("No embeddings generated.")
-    embedding_memmap.flush()
-    for mm in view_memmaps.values():
+    for mm in embedding_memmaps.values():
         mm.flush()
+    for per_dim_mm in view_memmaps.values():
+        for mm in per_dim_mm.values():
+            mm.flush()
 
     config_hash_payload = {
         "experiment_config": exp_cfg,
@@ -624,7 +646,7 @@ def main() -> None:
         "local_model_ref": local_model_ref,
         "allow_device_fallback": args.allow_device_fallback,
         "batch_size": batch_size,
-        "embedding_dim": embedding_dim_config,
+        "embedding_dim": embedding_dims_config,
         "trust_remote_code": trust_remote_code,
     }
     config_hash = compute_config_hash(config_hash_payload)
@@ -642,7 +664,7 @@ def main() -> None:
             "local_model_ref": local_model_ref,
             "max_length": max_length,
             "batch_size": batch_size,
-            "embedding_dim": embedding_dim_config,
+            "embedding_dim": embedding_dims_config,
             "trust_remote_code": trust_remote_code,
             "normalize_embeddings": normalize_embeddings,
         },
@@ -655,13 +677,20 @@ def main() -> None:
         "fusion": fusion_cfg,
         "views_to_encode": views_to_encode,
         "output": {
-            "embedding_path": str(embedding_path),
+            "embedding_paths": {str(dim): str(path) for dim, path in embedding_paths.items()},
             "item_ids_path": str(item_ids_path),
             "view_embedding_paths": (
-                {k: str(v) for k, v in view_embedding_paths.items()} if args.save_view_embeddings else {}
+                (
+                    {
+                        str(dim): {view_id: str(path) for view_id, path in per_dim_paths.items()}
+                        for dim, per_dim_paths in view_embedding_paths.items()
+                    }
+                )
+                if args.save_view_embeddings
+                else {}
             ),
             "rows": total_items,
-            "dim": embedding_dim,
+            "dims": embedding_dims_config,
             "tokens_processed": total_tokens_processed,
             "encode_seconds": total_encode_seconds,
             "tokens_per_second": (
@@ -677,10 +706,11 @@ def main() -> None:
 
     print(
         "[embed] done "
-        f"rows={total_items} dim={embedding_dim} "
+        f"rows={total_items} dims={embedding_dims_config} "
         f"tokens={total_tokens_processed}"
     )
-    print(f"[embed] item_embeddings={embedding_path}")
+    for dim in embedding_dims_config:
+        print(f"[embed] item_embeddings_{dim}={embedding_paths[dim]}")
     print(f"[embed] item_ids={item_ids_path}")
     print(f"[embed] config_snapshot={run_snapshot_path}")
 

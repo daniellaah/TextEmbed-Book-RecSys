@@ -33,7 +33,7 @@ class GenerateItemEmbeddingsTests(unittest.TestCase):
             "experiment_id": "exp_test",
             "model": {
                 "name": model_name,
-                "embedding_dim": 16,
+                "embedding_dim": [16],
                 "max_length": 16,
                 "normalize_embeddings": True,
             },
@@ -125,6 +125,12 @@ class GenerateItemEmbeddingsTests(unittest.TestCase):
         cfg = self._minimal_experiment_config(model_name="BAAI/bge-m3")
         del cfg["model"]["embedding_dim"]
         with self.assertRaisesRegex(ValueError, "model.embedding_dim"):
+            mod.validate_experiment_config(cfg)
+
+    def test_validate_config_requires_embedding_dim_list(self) -> None:
+        cfg = self._minimal_experiment_config(model_name="BAAI/bge-m3")
+        cfg["model"]["embedding_dim"] = 16
+        with self.assertRaisesRegex(ValueError, "non-empty list"):
             mod.validate_experiment_config(cfg)
 
     def test_validate_config_rejects_non_bool_trust_remote_code(self) -> None:
