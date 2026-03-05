@@ -24,9 +24,8 @@ Detailed protocol lives in [`docs/dev_guide.md`](docs/dev_guide.md).
 
 ```text
 configs/
-  experiments/
-    tac/                      # TAC-style single-view experiments
-    other/                    # concat / weighted multi-view experiments
+  tac/                        # TAC-style single-view experiments
+  other/                      # concat / weighted multi-view experiments
 docs/
   dev_guide.md
 src/
@@ -135,7 +134,7 @@ Use subset for faster embedding iteration by passing it to `--items-input` in st
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run python src/embedding/generate_item_embeddings.py \
-  --experiment-config configs/experiments/tac/exp_bge_tac.yaml \
+  --experiment-config configs/tac/exp_bge_tac.yaml \
   --items-input data/processed/items.jsonl \
   --device mps \
   --allow-device-fallback \
@@ -147,7 +146,7 @@ UV_CACHE_DIR=.uv-cache uv run python src/embedding/generate_item_embeddings.py \
 ```bash
 UV_CACHE_DIR=.uv-cache uv run python src/eval/run_eval.py \
   --eval-input data/processed/eval.jsonl \
-  --embedding-dir outputs/embeddings/BAAI__bge-m3/exp_bge_tac/<run_id> \
+  --embedding-dir outputs/embeddings/BAAI__bge-m3/<run_id> \
   --output-root outputs/eval \
   --topk 10,50 \
   --index-type hnsw
@@ -157,8 +156,8 @@ UV_CACHE_DIR=.uv-cache uv run python src/eval/run_eval.py \
 
 Config files are under:
 
-- `configs/experiments/tac/*.yaml`
-- `configs/experiments/other/*.yaml`
+- `configs/tac/*.yaml`
+- `configs/other/*.yaml`
 
 ### Config schema
 
@@ -193,7 +192,7 @@ fusion:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `experiment_id` | string | yes | Unique experiment identifier, used in output path. |
+| `experiment_id` | string | yes | Unique experiment identifier, stored in per-run `config.json`. |
 | `model.name` | string | yes | Hugging Face repo id (`namespace/model`). |
 | `model.embedding_dim` | int | yes | Final embedding dimension (must be <= model output dim). |
 | `model.max_length` | int | yes | Token truncation length. |
@@ -239,7 +238,7 @@ Notes:
 |---|---|---|
 | `--interactions-input` | `data/processed/interactions.jsonl` | Input interactions. |
 | `--queries-output` | `data/processed/eval.jsonl` | Output eval query set. |
-| `--report-output` | `reports/data_profile/build_eval_report.json` | Build report output path. |
+| `--report-output` | auto | Build report output path. If omitted: `reports/data_profile/build_eval_report_<queries_output_stem>.json`. |
 | `--rating-threshold` | `4.0` | Positive sample rule: `rating >= threshold`. |
 | `--min-user-pos` | `1` | Minimum positives per user after filtering. |
 | `--min-item-pos` | `1` | Minimum positives per item after filtering. |
@@ -262,7 +261,6 @@ Notes:
 | `--experiment-config` | required | Experiment YAML path. |
 | `--items-input` | `data/processed/items.jsonl` | Items input used for rendering views. |
 | `--output-root` | `outputs/embeddings` | Embedding artifact root. |
-| `--runs-root` | `outputs/runs` | Run snapshot root (`config.json`). |
 | `--device` | `mps` | Requested device (`mps`/`cuda`/`cpu`). |
 | `--allow-device-fallback` | false | Fallback to CPU if requested device unavailable. |
 | `--seed` | `42` | RNG seed. |
@@ -273,8 +271,9 @@ Notes:
 Important behavior:
 
 - Local-only model loading (`local_files_only=True`); model must already exist in `~/.cache/huggingface/hub`.
-- Output path: `outputs/embeddings/<model_dir>/<experiment_id>/<run_id>/...`
+- Output path: `outputs/embeddings/<model_dir>/<run_id>/...`
   - `model_dir` is `model.name` with `/` replaced by `__`.
+  - `run_id` is local timestamp with milliseconds (`YYYYMMDDHHMMSSmmm`).
 
 ### `src/eval/run_eval.py`
 
@@ -339,10 +338,10 @@ Merging notes:
 
 ### Embedding stage
 
-- `outputs/embeddings/<model_dir>/<experiment_id>/<run_id>/item_embeddings.npy`
-- `outputs/embeddings/<model_dir>/<experiment_id>/<run_id>/item_ids.jsonl`
+- `outputs/embeddings/<model_dir>/<run_id>/item_embeddings.npy`
+- `outputs/embeddings/<model_dir>/<run_id>/item_ids.jsonl`
+- `outputs/embeddings/<model_dir>/<run_id>/config.json` (run snapshot + config hash)
 - Optional: `item_embeddings__<view_id>.npy` when `--save-view-embeddings` is enabled.
-- `outputs/runs/<run_id>/config.json` (run snapshot + config hash)
 
 ### Eval stage
 

@@ -60,7 +60,8 @@ src/
   retrieval/
   eval/
 configs/
-  experiments/
+  tac/
+  other/
 reports/
 outputs/
 docs/
@@ -73,10 +74,11 @@ docs/
 - `data/processed/eval.jsonl`: 评估 query/target 集
 - `reports/data_profile/build_items_report.json`: items 构建统计
 - `reports/data_profile/build_interactions_report.json`: interactions 构建统计
-- `reports/data_profile/build_eval_report.json`: eval 构建统计
+- `reports/data_profile/build_eval_report_<queries_output_stem>.json`: eval 构建统计（默认命名规则）
 - `reports/data_profile/build_items_subset_from_eval_report.json`: eval 驱动的 items 子集构建统计
-- `outputs/embeddings/<model_name>/<experiment_id>/<run_id>/item_embeddings.npy`: 按实验配置产出的 item 向量
-- `outputs/index/<model_name>/<experiment_id>/<run_id>/faiss.index`: 按实验配置构建的检索索引
+- `outputs/embeddings/<model_name>/<run_id>/item_embeddings.npy`: 按实验配置产出的 item 向量
+- `outputs/embeddings/<model_name>/<run_id>/item_ids.jsonl`: 与 embedding 行对齐的 item 主键
+- `outputs/embeddings/<model_name>/<run_id>/config.json`: embedding 运行快照（含实验参数与配置哈希）
 - `outputs/eval/<eval_run_id>/predictions.jsonl`: 每条 query 的 topK 检索结果
 - `outputs/eval/<eval_run_id>/run_eval_report.json`: 指标结果
 - `outputs/eval/<eval_run_id>/info.json`: 本次评估输入与参数快照
@@ -181,7 +183,7 @@ docs/
 输出:
 
 - `data/processed/eval.jsonl`
-- `reports/data_profile/build_eval_report.json`
+- `reports/data_profile/build_eval_report_<queries_output_stem>.json`（`--report-output` 不传时自动命名）
 
 评估样本 schema（`eval.jsonl`）:
 
@@ -255,7 +257,7 @@ CLI 关键参数:
 Embedding 输入约定:
 
 - 由 embedding 阶段基于 `items.jsonl` + 实验配置动态渲染文本，不产出 `items_text.jsonl` 中间文件
-- 实验配置统一放在 `configs/experiments/*.yaml`
+- 实验配置统一放在 `configs/tac/*.yaml` 与 `configs/other/*.yaml`
 - `model.name` 必须是 Hugging Face repo id（`namespace/model`），例如 `BAAI/bge-m3`
 - embedding 模型只从本机 `~/.cache/huggingface/hub` 读取，不走远程下载
 - 对需要自定义模型代码的仓库，可在配置中显式设置 `model.trust_remote_code: true`
@@ -383,9 +385,9 @@ fusion:
 每次运行必须生成唯一 `run_id` / `eval_run_id`，并保存:
 
 - embedding 阶段:
-  - `outputs/runs/<run_id>/config.json`: embedding 完整配置快照
-  - `outputs/embeddings/<model_name>/<experiment_id>/<run_id>/item_embeddings.npy`
-  - `outputs/embeddings/<model_name>/<experiment_id>/<run_id>/item_ids.jsonl`
+  - `outputs/embeddings/<model_name>/<run_id>/item_embeddings.npy`
+  - `outputs/embeddings/<model_name>/<run_id>/item_ids.jsonl`
+  - `outputs/embeddings/<model_name>/<run_id>/config.json`: embedding 完整配置快照
 - eval 阶段:
   - `outputs/eval/<eval_run_id>/predictions.jsonl`
   - `outputs/eval/<eval_run_id>/run_eval_report.json`
@@ -401,7 +403,7 @@ embedding `config.json` 至少包含:
 - 实验配置信息（`experiment_id`, `experiment_config_path`, `view_ids`, `fusion_method`）
 - 融合归一化开关（`fusion_normalization`）
 - 配置哈希信息（`config_hash`）
-- 本次运行产物路径（embedding/index 路径，需包含 `run_id`）
+- 本次运行产物路径（embedding 路径，需包含 `run_id`）
 
 ## 10. 开发与 Code/Function Review 规范
 
