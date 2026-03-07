@@ -1,0 +1,21 @@
+experiment_id: exp_mxbai_embed_large_v1_tac
+
+model:
+  name: mixedbread-ai/mxbai-embed-large-v1
+  embedding_dim: [32, 64, 128, 256, 512, 1024]
+  max_length: 512
+  normalize_embeddings: true
+
+text_views:
+  views:
+    - view_id: view_tac
+      fields: [title, author, categories]
+      template: |
+        Title: {title}
+        Author: {author}
+        Categories: {categories}
+
+fusion:
+  method: identity
+  input_views: [view_tac]
+  normalization: false
