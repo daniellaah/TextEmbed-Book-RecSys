@@ -227,31 +227,31 @@ Observed conclusions:
 
 ### Recall@10
 
-![Recall@10](outputs/eval/last/plots/recall_at_10.png)
+![Recall@10](img/recall_at_10.png)
 
 ### Recall@50
 
-![Recall@50](outputs/eval/last/plots/recall_at_50.png)
+![Recall@50](img/recall_at_50.png)
 
 ### MRR@10
 
-![MRR@10](outputs/eval/last/plots/mrr_at_10.png)
+![MRR@10](img/mrr_at_10.png)
 
 ### NDCG@10
 
-![NDCG@10](outputs/eval/last/plots/ndcg_at_10.png)
+![NDCG@10](img/ndcg_at_10.png)
 
 ### Recall@100
 
-![Recall@100](outputs/eval/last/plots/recall_at_100.png)
+![Recall@100](img/recall_at_100.png)
 
 ### MRR@100
 
-![MRR@100](outputs/eval/last/plots/mrr_at_100.png)
+![MRR@100](img/mrr_at_100.png)
 
 ### NDCG@100
 
-![NDCG@100](outputs/eval/last/plots/ndcg_at_100.png)
+![NDCG@100](img/ndcg_at_100.png)
 
 ## Experiment Configs
 

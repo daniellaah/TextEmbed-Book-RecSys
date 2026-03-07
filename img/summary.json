@@ -1,0 +1,38 @@
+{
+  "input": "/Users/daboluo/MyWorkSpace/GitHub/TextEmbed-Book-RecSys/outputs/eval/last",
+  "num_rows": 312,
+  "num_models": 6,
+  "models": [
+    "BAAI/bge-m3",
+    "Qwen/Qwen3-Embedding-0.6B",
+    "Qwen/Qwen3-Embedding-4B",
+    "Qwen/Qwen3-Embedding-8B",
+    "intfloat/multilingual-e5-large-instruct",
+    "nvidia/llama-embed-nemotron-8b"
+  ],
+  "dims": [
+    32,
+    64,
+    128,
+    256,
+    512,
+    1024,
+    2048,
+    2560,
+    4096
+  ],
+  "metric_keys": [
+    "hit_rate@10",
+    "hit_rate@100",
+    "hit_rate@50",
+    "mrr@10",
+    "mrr@100",
+    "mrr@50",
+    "ndcg@10",
+    "ndcg@100",
+    "ndcg@50",
+    "recall@10",
+    "recall@100",
+    "recall@50"
+  ]
+}
