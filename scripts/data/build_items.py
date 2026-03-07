@@ -94,7 +94,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--report",
-        default="reports/data_profile/build_items_report.json",
+        default="reports/build_items_report.json",
         help="Output report json path.",
     )
     parser.add_argument(

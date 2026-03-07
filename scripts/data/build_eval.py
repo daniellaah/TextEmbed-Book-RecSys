@@ -52,7 +52,7 @@ def default_report_output_for_queries(queries_output: str) -> str:
     stem = normalize_text(queries_path.stem)
     if not stem:
         stem = "eval"
-    return str(Path("reports/data_profile") / f"build_eval_report_{stem}.json")
+    return str(Path("reports") / f"build_eval_report_{stem}.json")
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,7 +72,7 @@ def parse_args() -> argparse.Namespace:
         default="",
         help=(
             "Output build report json path. "
-            "If omitted, auto uses reports/data_profile/build_eval_report_<queries_output_stem>.json"
+            "If omitted, auto uses reports/build_eval_report_<queries_output_stem>.json"
         ),
     )
     parser.add_argument(

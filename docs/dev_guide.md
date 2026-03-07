@@ -72,10 +72,10 @@ docs/
 - `data/processed/items.jsonl`: Item 结构化语料（唯一 item 粒度，不含 `text`）
 - `data/processed/interactions.jsonl`: 清洗后的全量交互（保留 rating）
 - `data/processed/eval.jsonl`: 评估 query/target 集
-- `reports/data_profile/build_items_report.json`: items 构建统计
-- `reports/data_profile/build_interactions_report.json`: interactions 构建统计
-- `reports/data_profile/build_eval_report_<queries_output_stem>.json`: eval 构建统计（默认命名规则）
-- `reports/data_profile/build_items_subset_report_from_<eval_input_stem>.json`: eval 驱动的 items 子集构建统计（默认命名规则）
+- `reports/build_items_report.json`: items 构建统计
+- `reports/build_interactions_report.json`: interactions 构建统计
+- `reports/build_eval_report_<queries_output_stem>.json`: eval 构建统计（默认命名规则）
+- `reports/build_items_subset_report_from_<eval_input_stem>.json`: eval 驱动的 items 子集构建统计（默认命名规则）
 - `outputs/embeddings/<model_name>/<run_id>/item_embeddings_<dim>.npy`: 按实验配置产出的 item 向量（可多维）
 - `outputs/embeddings/<model_name>/<run_id>/item_ids.jsonl`: 与 embedding 行对齐的 item 主键
 - `outputs/embeddings/<model_name>/<run_id>/config.json`: embedding 运行快照（含实验参数与配置哈希）
@@ -141,7 +141,7 @@ docs/
 
 - `items.jsonl` 中 `item_id` 唯一率 `100%`
 - `items.jsonl` 中关键字段（`item_id`, `title`）非空率需记录在报告
-- 输出行数、去重率、缺失率写入 `reports/data_profile/build_items_report.json`
+- 输出行数、去重率、缺失率写入 `reports/build_items_report.json`
 
 ## 6. User 正样本与评估集构造规范（当前实现）
 
@@ -155,7 +155,7 @@ docs/
 输出:
 
 - `data/processed/interactions.jsonl`
-- `reports/data_profile/build_interactions_report.json`
+- `reports/build_interactions_report.json`
 
 交互 schema（`interactions.jsonl`）:
 
@@ -183,7 +183,7 @@ docs/
 输出:
 
 - `data/processed/eval.jsonl`
-- `reports/data_profile/build_eval_report_<queries_output_stem>.json`（`--report-output` 不传时自动命名）
+- `reports/build_eval_report_<queries_output_stem>.json`（`--report-output` 不传时自动命名）
 
 评估样本 schema（`eval.jsonl`）:
 
@@ -227,7 +227,7 @@ CLI 关键参数:
 输出:
 
 - `data/processed/items_subset_<eval_input_stem>.jsonl`（`--output` 不传时自动命名）
-- `reports/data_profile/build_items_subset_report_from_<eval_input_stem>.json`（`--report` 不传时自动命名）
+- `reports/build_items_subset_report_from_<eval_input_stem>.json`（`--report` 不传时自动命名）
 
 规则:
 

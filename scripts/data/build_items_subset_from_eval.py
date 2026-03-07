@@ -31,7 +31,7 @@ def default_report_for_eval_input(eval_input: str) -> str:
     stem = normalize_text(Path(eval_input).stem)
     if not stem:
         stem = "eval"
-    return str(Path("reports/data_profile") / f"build_items_subset_report_from_{stem}.json")
+    return str(Path("reports") / f"build_items_subset_report_from_{stem}.json")
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
         default="",
         help=(
             "Output report json path. "
-            "If omitted, auto uses reports/data_profile/build_items_subset_report_from_<eval_input_stem>.json"
+            "If omitted, auto uses reports/build_items_subset_report_from_<eval_input_stem>.json"
         ),
     )
     args = parser.parse_args()

@@ -103,8 +103,7 @@ curl -L --fail "https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023/
 ```bash
 UV_CACHE_DIR=.uv-cache uv run python scripts/data/build_items.py \
   --input data/raw/meta_Books.jsonl \
-  --output data/processed/items.jsonl \
-  --report reports/data_profile/build_items_report.json
+  --output data/processed/items.jsonl
 ```
 
 ### 2) Build interactions
@@ -114,7 +113,6 @@ UV_CACHE_DIR=.uv-cache uv run python scripts/data/build_interactions.py \
   --books-input data/raw/Books.jsonl \
   --items-input data/processed/items.jsonl \
   --output data/processed/interactions.jsonl \
-  --report reports/data_profile/build_interactions_report.json \
   --seed 42
 ```
 
@@ -124,7 +122,6 @@ UV_CACHE_DIR=.uv-cache uv run python scripts/data/build_interactions.py \
 UV_CACHE_DIR=.uv-cache uv run python scripts/data/build_eval.py \
   --interactions-input data/processed/interactions.jsonl \
   --queries-output data/processed/eval.jsonl \
-  --report-output reports/data_profile/build_eval_report.json \
   --rating-threshold 4.0 \
   --min-user-pos 1 \
   --min-item-pos 1 \
@@ -339,7 +336,7 @@ Notes:
 |---|---|---|
 | `--input` | `data/raw/meta_Books.jsonl` | Raw metadata input JSONL. |
 | `--output` | `data/processed/items.jsonl` | Cleaned items output JSONL. |
-| `--report` | `reports/data_profile/build_items_report.json` | Build report output path. |
+| `--report` | `reports/build_items_report.json` | Build report output path. |
 | `--tmp-db` | `data/processed/.tmp_build_items.sqlite3` | Temporary sqlite for dedup / merge logic. |
 
 ### `scripts/data/build_interactions.py`
@@ -349,7 +346,7 @@ Notes:
 | `--books-input` | `data/raw/Books.jsonl` | Raw interactions input JSONL. |
 | `--items-input` | `data/processed/items.jsonl` | Filter interactions to valid item ids from this file. |
 | `--output` | `data/processed/interactions.jsonl` | Cleaned interactions output JSONL. |
-| `--report` | `reports/data_profile/build_interactions_report.json` | Build report output path. |
+| `--report` | `reports/build_interactions_report.json` | Build report output path. |
 | `--seed` | `42` | Protocol metadata seed (reserved for deterministic config tracking). |
 
 ### `scripts/data/build_eval.py`
@@ -358,7 +355,7 @@ Notes:
 |---|---|---|
 | `--interactions-input` | `data/processed/interactions.jsonl` | Input interactions. |
 | `--queries-output` | `data/processed/eval.jsonl` | Output eval query set. |
-| `--report-output` | auto | Build report output path. If omitted: `reports/data_profile/build_eval_report_<queries_output_stem>.json`. |
+| `--report-output` | auto | Build report output path. If omitted: `reports/build_eval_report_<queries_output_stem>.json`. |
 | `--rating-threshold` | `4.0` | Positive sample rule: `rating >= threshold`. |
 | `--min-user-pos` | `1` | Minimum positives per user after filtering. |
 | `--min-item-pos` | `1` | Minimum positives per item after filtering. |
@@ -372,7 +369,7 @@ Notes:
 | `--eval-input` | `data/processed/eval.jsonl` | Eval set containing query/target ids. |
 | `--items-input` | `data/processed/items.jsonl` | Full items file. |
 | `--output` | auto | Reduced items file. If omitted: `data/processed/items_subset_<eval_input_stem>.jsonl`. |
-| `--report` | auto | Build report output path. If omitted: `reports/data_profile/build_items_subset_report_from_<eval_input_stem>.json`. |
+| `--report` | auto | Build report output path. If omitted: `reports/build_items_subset_report_from_<eval_input_stem>.json`. |
 
 ### `scripts/embedding/generate_item_embeddings.py`
 
@@ -470,7 +467,7 @@ Behavior:
 - `data/processed/items.jsonl`
 - `data/processed/interactions.jsonl`
 - `data/processed/eval.jsonl`
-- `reports/data_profile/*.json`
+- `reports/*.json`
 
 ### Embedding stage
 

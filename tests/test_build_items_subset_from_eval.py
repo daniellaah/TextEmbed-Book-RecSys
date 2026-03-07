@@ -122,7 +122,6 @@ class BuildItemsSubsetFromEvalTests(unittest.TestCase):
             expected_report = (
                 tmp_path
                 / "reports"
-                / "data_profile"
                 / "build_items_subset_report_from_eval_u6_i5_q5.json"
             )
 

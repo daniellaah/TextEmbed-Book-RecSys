@@ -94,7 +94,7 @@ class BuildEvalTests(unittest.TestCase):
             tmp_path = Path(tmp)
             interactions_path = tmp_path / "interactions.jsonl"
             queries_output = tmp_path / "eval_u6_i5_q5.jsonl"
-            expected_report = tmp_path / "reports" / "data_profile" / "build_eval_report_eval_u6_i5_q5.json"
+            expected_report = tmp_path / "reports" / "build_eval_report_eval_u6_i5_q5.json"
 
             rows = [
                 {"user_id": "U1", "item_id": "I1", "rating": 5, "timestamp": 1},
@@ -128,7 +128,7 @@ class BuildEvalTests(unittest.TestCase):
             report = json.loads(expected_report.read_text(encoding="utf-8"))
             self.assertEqual(
                 report["config"]["report_output"],
-                str(Path("reports/data_profile/build_eval_report_eval_u6_i5_q5.json")),
+                str(Path("reports/build_eval_report_eval_u6_i5_q5.json")),
             )
 
     def _run_script(
