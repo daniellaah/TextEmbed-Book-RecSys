@@ -15,9 +15,9 @@ This repository provides an end-to-end offline workflow:
 
 Primary metrics:
 
-- Recall@10, Recall@50
-- NDCG@10, NDCG@50
-- MRR@10, MRR@50
+- Recall@10, Recall@50, Recall@100
+- NDCG@10, NDCG@50, NDCG@100
+- MRR@10, MRR@50, MRR@100
 
 Detailed protocol lives in [`docs/dev_guide.md`](docs/dev_guide.md).
 
@@ -150,19 +150,17 @@ UV_CACHE_DIR=.uv-cache uv run python src/eval/run_eval.py \
   --embedding-dir outputs/embeddings/BAAI__bge-m3/<run_id> \
   --embedding-dim max \
   --output-root outputs/eval \
-  --topk 10,50 \
+  --topk 10,50,100 \
   --index-type hnsw
 ```
 
 ### 7) Batch-run eval for all current embeddings
 
-`run.sh` loops over `outputs/embeddings/*/*`, runs `run_eval.py` with:
+`run.sh` loops over `outputs/embeddings/*/*` and runs `run_eval.py` with:
 
 - `--embedding-dim all`
 - `--query-pooling last`
 - per-run `eval_run_id`
-
-and then automatically calls `plot_eval_results.py` on the generated manifest.
 
 ```bash
 ./run.sh
@@ -173,7 +171,6 @@ Useful overrides:
 ```bash
 EVAL_INPUT=data/processed/eval_u6_i5_q5.jsonl \
 OUTPUT_ROOT=outputs/eval/last \
-PLOTS_OUTPUT_DIR=outputs/eval/last/plots \
 ./run.sh
 ```
 
@@ -184,7 +181,8 @@ By directory:
 ```bash
 XDG_CACHE_HOME=.cache MPLCONFIGDIR=.cache/matplotlib UV_CACHE_DIR=.uv-cache \
 uv run python src/eval/plot_eval_results.py \
-  --input outputs/eval/last
+  --input outputs/eval/last \
+  --output-dir outputs/eval/last/plots
 ```
 
 By manifest:
@@ -194,6 +192,66 @@ XDG_CACHE_HOME=.cache MPLCONFIGDIR=.cache/matplotlib UV_CACHE_DIR=.uv-cache \
 uv run python src/eval/plot_eval_results.py \
   --input outputs/eval/last/<batch_ts>_manifest.txt
 ```
+
+## Current Benchmark Snapshot
+
+Current comparison plots are generated from:
+
+- Eval root: `outputs/eval/last`
+- Plot dir: `outputs/eval/last/plots`
+- Eval set: `data/processed/eval_u6_i5_q5.jsonl`
+- Retrieval mode: `pooling`
+- Query pooling: `last`
+- Index type: `hnsw`
+
+Best current checkpoints from `outputs/eval/last/plots/results.csv`:
+
+| Metric | Best model | Best dim | Score |
+|---|---|---:|---:|
+| Recall@10 | `intfloat/multilingual-e5-large-instruct` | 1024 | 0.0609 |
+| Recall@50 | `nvidia/llama-embed-nemotron-8b` | 4096 | 0.0955 |
+| Recall@100 | `nvidia/llama-embed-nemotron-8b` | 4096 | 0.1120 |
+| MRR@10 | `intfloat/multilingual-e5-large-instruct` | 1024 | 0.0281 |
+| MRR@50 | `intfloat/multilingual-e5-large-instruct` | 1024 | 0.0297 |
+| MRR@100 | `intfloat/multilingual-e5-large-instruct` | 1024 | 0.0299 |
+| NDCG@10 | `intfloat/multilingual-e5-large-instruct` | 1024 | 0.0358 |
+| NDCG@50 | `intfloat/multilingual-e5-large-instruct` | 1024 | 0.0432 |
+| NDCG@100 | `intfloat/multilingual-e5-large-instruct` | 1024 | 0.0453 |
+
+Observed conclusions:
+
+- `intfloat/multilingual-e5-large-instruct` is the strongest overall model in the current `last`-pooling benchmark, especially on rank-sensitive metrics (`MRR`, `NDCG`) and `Recall@10`.
+- `nvidia/llama-embed-nemotron-8b` reaches the best `Recall@50` and `Recall@100`, suggesting stronger broader-recall behavior at larger cutoffs.
+- For the Qwen family, performance improves steadily as dimension increases; `Qwen3-Embedding-8B` at `4096` is clearly stronger than the lower-dim variants.
+- `BAAI/bge-m3` is a reasonable baseline, but on the current protocol it trails the stronger multilingual / larger Qwen / Nemotron models.
+
+### Recall@10
+
+![Recall@10](outputs/eval/last/plots/recall_at_10.png)
+
+### Recall@50
+
+![Recall@50](outputs/eval/last/plots/recall_at_50.png)
+
+### MRR@10
+
+![MRR@10](outputs/eval/last/plots/mrr_at_10.png)
+
+### NDCG@10
+
+![NDCG@10](outputs/eval/last/plots/ndcg_at_10.png)
+
+### Recall@100
+
+![Recall@100](outputs/eval/last/plots/recall_at_100.png)
+
+### MRR@100
+
+![MRR@100](outputs/eval/last/plots/mrr_at_100.png)
+
+### NDCG@100
+
+![NDCG@100](outputs/eval/last/plots/ndcg_at_100.png)
 
 ## Experiment Configs
 
@@ -328,7 +386,7 @@ Important behavior:
 | `--output-root` | `outputs/eval` | Output root; writes into `<output_root>/<eval_run_id>/`. |
 | `--eval-run-id` | timestamp | Optional eval run id (`YYYYMMDDHHMMSS` if omitted). |
 | `--max-query` | `0` | `0` = all valid queries; `>0` = first N valid queries. |
-| `--topk` | `10,50` | Comma-separated K list. |
+| `--topk` | `10,50` | Comma-separated K list, for example `10,50,100`. |
 | `--query-history-n` | `0` | Number of most recent `query_item_ids` used in eval; `0` = use all history. |
 | `--query-pooling` | `mean` | Pooling over `query_item_ids`: `mean`, `max`, or `last` (use the last query item only). |
 | `--query-retrieval-mode` | `pooling` | `pooling` (single pooled query) or `merging` (retrieve per query then dedup+merge). |
