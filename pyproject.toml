@@ -1,0 +1,17 @@
+[project]
+name = "rec-embed-bench"
+version = "0.1.0"
+description = "Benchmarking open-source text embeddings for recommendation retrieval."
+readme = "README.md"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "faiss-cpu",
+    "matplotlib",
+    "numpy",
+    "pyyaml",
+    "torch",
+    "transformers",
+]
+
+[tool.uv]
+package = false

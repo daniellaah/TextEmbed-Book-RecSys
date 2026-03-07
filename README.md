@@ -72,10 +72,7 @@ run.sh
 ```bash
 uv python install 3.10
 uv venv --python 3.10
-
-# Install runtime dependencies (no pyproject.toml required)
-UV_CACHE_DIR=.uv-cache uv pip install --python .venv/bin/python \
-  numpy torch transformers faiss-cpu pyyaml matplotlib
+UV_CACHE_DIR=.uv-cache uv sync
 ```
 
 Run all scripts via `uv`:
