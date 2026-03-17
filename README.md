@@ -1,4 +1,4 @@
-# Benchmarking Open-Source LLM Text Embeddings for Semantic Recommendation Retrieval
+# Semantic Retrieval Benchmark for Book Recommendation
 
 An offline benchmark on Amazon Reviews 2023 (Books) for comparing different open-source embedding models and embedding dimensions in next-item retrieval.
 
