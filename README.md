@@ -2,6 +2,52 @@
 
 An offline benchmark on Amazon Reviews 2023 (Books) for comparing different open-source embedding models and embedding dimensions in next-item retrieval.
 
+<table>
+  <tr>
+    <td align="center">
+      <h3>Recall@10</h3>
+      <img src="img/recall_at_10.png" alt="Recall@10" width="280"/>
+    </td>
+    <td align="center">
+      <h3>Recall@50</h3>
+      <img src="img/recall_at_50.png" alt="Recall@50" width="280"/>
+    </td>
+    <td align="center">
+      <h3>Recall@100</h3>
+      <img src="img/recall_at_100.png" alt="Recall@100" width="280"/>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <h3>MRR@10</h3>
+      <img src="img/mrr_at_10.png" alt="MRR@10" width="280"/>
+    </td>
+    <td align="center">
+      <h3>MRR@50</h3>
+      <img src="img/mrr_at_50.png" alt="MRR@50" width="280"/>
+    </td>
+    <td align="center">
+      <h3>MRR@100</h3>
+      <img src="img/mrr_at_100.png" alt="MRR@100" width="280"/>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <h3>NDCG@10</h3>
+      <img src="img/ndcg_at_10.png" alt="NDCG@10" width="280"/>
+    </td>
+    <td align="center">
+      <h3>NDCG@50</h3>
+      <img src="img/ndcg_at_50.png" alt="NDCG@50" width="280"/>
+    </td>
+    <td align="center">
+      <h3>NDCG@100</h3>
+      <img src="img/ndcg_at_100.png" alt="NDCG@100" width="280"/>
+    </td>
+  </tr>
+</table>
+
+
 ## Overview
 
 This repository provides an end-to-end offline workflow:
@@ -251,7 +297,7 @@ Observed conclusions:
 
 ### MRR@50
 
-![MRR@100](img/mrr_at_50.png)
+![MRR@50](img/mrr_at_50.png)
 
 ### MRR@100
 
