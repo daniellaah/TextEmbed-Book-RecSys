@@ -75,6 +75,12 @@ def load_embedding_report(eval_dir: Path) -> dict[str, Any]:
     if not report_path.exists():
         raise FileNotFoundError(f"Missing embedding report: {report_path}")
     report = load_json(report_path)
+    config = report.get("config")
+    if not isinstance(config, dict):
+        config = {}
+    eval_stats = report.get("eval_stats")
+    if not isinstance(eval_stats, dict):
+        eval_stats = {}
     embedding_identity = report.get("embedding_identity")
     if not isinstance(embedding_identity, dict):
         embedding_identity = {}
@@ -89,6 +95,10 @@ def load_embedding_report(eval_dir: Path) -> dict[str, Any]:
         "kind": "embedding",
         "report_path": str(report_path.resolve()),
         "metrics": report.get("metrics", {}),
+        "eval_input": normalize_text(config.get("eval_input")),
+        "topk": config.get("topk", []),
+        "max_query": int(config.get("max_query", 0) or 0),
+        "valid_eval_rows": int(eval_stats.get("valid_eval_rows", 0)),
     }
 
 
@@ -108,11 +118,21 @@ def resolve_latest_baseline_report(baseline_root: Path, baseline_name: str) -> P
 def load_baseline_report(baseline_root: Path, baseline_name: str) -> dict[str, Any]:
     report_path = resolve_latest_baseline_report(baseline_root, baseline_name)
     report = load_json(report_path)
+    config = report.get("config")
+    if not isinstance(config, dict):
+        config = {}
+    eval_stats = report.get("eval_stats")
+    if not isinstance(eval_stats, dict):
+        eval_stats = {}
     return {
         "name": baseline_name,
         "kind": "baseline",
         "report_path": str(report_path.resolve()),
         "metrics": report.get("metrics", {}),
+        "eval_input": normalize_text(config.get("eval_input")),
+        "topk": config.get("topk", []),
+        "max_query": int(config.get("max_query", 0) or 0),
+        "valid_eval_rows": int(eval_stats.get("valid_eval_rows", 0)),
     }
 
 
@@ -121,6 +141,42 @@ def collect_systems(embedding_eval_dir: Path, baseline_root: Path, baseline_name
     for baseline_name in baseline_names:
         systems.append(load_baseline_report(baseline_root, baseline_name))
     return systems
+
+
+def validate_system_compatibility(systems: list[dict[str, Any]]) -> None:
+    if not systems:
+        raise ValueError("No systems to compare.")
+    reference = systems[0]
+    reference_eval_input = normalize_text(reference.get("eval_input"))
+    reference_topk = [int(x) for x in reference.get("topk", [])]
+    reference_max_query = int(reference.get("max_query", 0))
+    reference_valid_eval_rows = int(reference.get("valid_eval_rows", 0))
+
+    for system in systems[1:]:
+        system_eval_input = normalize_text(system.get("eval_input"))
+        system_topk = [int(x) for x in system.get("topk", [])]
+        system_max_query = int(system.get("max_query", 0))
+        system_valid_eval_rows = int(system.get("valid_eval_rows", 0))
+        if system_eval_input != reference_eval_input:
+            raise ValueError(
+                f"Incompatible eval_input between {reference['name']} and {system['name']}: "
+                f"{reference_eval_input} != {system_eval_input}"
+            )
+        if system_topk != reference_topk:
+            raise ValueError(
+                f"Incompatible topk between {reference['name']} and {system['name']}: "
+                f"{reference_topk} != {system_topk}"
+            )
+        if system_max_query != reference_max_query:
+            raise ValueError(
+                f"Incompatible max_query between {reference['name']} and {system['name']}: "
+                f"{reference_max_query} != {system_max_query}"
+            )
+        if system_valid_eval_rows != reference_valid_eval_rows:
+            raise ValueError(
+                f"Incompatible valid_eval_rows between {reference['name']} and {system['name']}: "
+                f"{reference_valid_eval_rows} != {system_valid_eval_rows}"
+            )
 
 
 def build_records(systems: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -192,10 +248,15 @@ def build_series(records: list[dict[str, Any]], metric_name: str, ks: list[str])
         if record["metric_name"] != metric_name:
             continue
         values_by_system.setdefault(record["system_name"], {})[record["k"]] = float(record["metric_value"])
-    return {
-        system_name: [k_to_value.get(k, 0.0) for k in ks]
-        for system_name, k_to_value in values_by_system.items()
-    }
+    series: dict[str, list[float]] = {}
+    for system_name, k_to_value in values_by_system.items():
+        missing_ks = [k for k in ks if k not in k_to_value]
+        if missing_ks:
+            raise ValueError(
+                f"Missing {metric_name} values for system {system_name} at K={','.join(missing_ks)}"
+            )
+        series[system_name] = [k_to_value[k] for k in ks]
+    return series
 
 
 def plot_metric_family(
@@ -273,6 +334,7 @@ def main() -> None:
     ensure_dir(output_dir)
 
     systems = collect_systems(embedding_eval_dir, baseline_root, baseline_names)
+    validate_system_compatibility(systems)
     records = build_records(systems)
     if not records:
         raise ValueError("No metric records collected.")
