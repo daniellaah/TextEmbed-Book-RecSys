@@ -274,6 +274,49 @@ class RetrieveBaselinesTests(unittest.TestCase):
             report = json.loads(run["report"].read_text(encoding="utf-8"))
             self.assertEqual(report["baseline_stats"]["category_fallback_missing_category"], 1)
 
+    def test_tfidf_uses_text_overlap_and_excludes_query_items(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            items_input = tmp_path / "items.jsonl"
+            interactions_input = tmp_path / "interactions.jsonl"
+            eval_input = tmp_path / "eval.jsonl"
+            output_root = tmp_path / "outputs"
+
+            self._write_jsonl(
+                items_input,
+                [
+                    {"item_id": "A", "title": "deep learning with python", "author": "alpha", "categories": "ml"},
+                    {"item_id": "B", "title": "deep learning handbook", "author": "beta", "categories": "ml"},
+                    {"item_id": "C", "title": "roman history atlas", "author": "gamma", "categories": "history"},
+                ],
+            )
+            self._write_jsonl(
+                interactions_input,
+                [{"user_id": "U1", "item_id": "B", "rating": 5, "timestamp": 1}],
+            )
+            self._write_jsonl(
+                eval_input,
+                [{"user_id": "Q1", "query_item_ids": ["A"], "target_item_id": "B"}],
+            )
+
+            run = self._run_script(
+                baseline="tfidf",
+                items_input=items_input,
+                interactions_input=interactions_input,
+                eval_input=eval_input,
+                output_root=output_root,
+                run_id="tfidf",
+                topk="2",
+            )
+
+            pred_row = json.loads(run["predictions"].read_text(encoding="utf-8").strip())
+            predicted_item_ids = [x["item_id"] for x in pred_row["predictions"]]
+            self.assertEqual(predicted_item_ids[0], "B")
+            self.assertNotIn("A", predicted_item_ids)
+
+            report = json.loads(run["report"].read_text(encoding="utf-8"))
+            self.assertEqual(report["baseline_stats"]["tfidf"]["text_fields"], ["title", "author", "categories"])
+
     def test_max_query_and_report_metrics_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

@@ -48,7 +48,7 @@ An offline benchmark on Amazon Reviews 2023 (Books) for comparing different open
 </table>
 
 
-![Basline](img/baseline_comparison/recall_comparison.png)
+![Baseline](img/baseline_comparison/recall_comparison.png)
 
 ## Overview
 
@@ -205,12 +205,26 @@ UV_CACHE_DIR=.uv-cache uv run python scripts/baselines/retrieve_baselines.py \
   --seed 42
 ```
 
+TF-IDF baseline example:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run python scripts/baselines/retrieve_baselines.py \
+  --baseline tfidf \
+  --items-input data/processed/items.jsonl \
+  --interactions-input data/processed/interactions.jsonl \
+  --eval-input data/processed/eval.jsonl \
+  --output-root outputs/baselines \
+  --topk 10,50,100 \
+  --workers 8
+```
+
 Supported P0 baselines:
 
 - `random`
 - `global_popular`
 - `category_random`
 - `category_popular`
+- `tfidf`
 
 All baselines:
 
@@ -324,6 +338,7 @@ Observed conclusions:
 - `nvidia/llama-embed-nemotron-8b` reaches the best `Recall@50` and `Recall@100`, suggesting stronger broader-recall behavior at larger cutoffs.
 - For the Qwen family, performance improves steadily as dimension increases; `Qwen3-Embedding-8B` at `4096` is clearly stronger than the lower-dim variants.
 - `BAAI/bge-m3` is a reasonable baseline, but on the current protocol it trails the stronger multilingual / larger Qwen / Nemotron models.
+- Among the current non-semantic baselines, `tfidf` is the strongest overall lexical baseline and outperforms `category_popular` / `global_popular`, while still trailing the stronger embedding models by a wide margin.
 
 Baseline comparison should use the same `eval.jsonl` and the same `topK` list. The simplest workflow is:
 
@@ -473,7 +488,7 @@ Notes:
 
 | Arg | Default | Description |
 |---|---|---|
-| `--baseline` | required | `random`, `global_popular`, `category_random`, or `category_popular`. |
+| `--baseline` | required | `random`, `global_popular`, `category_random`, `category_popular`, or `tfidf`. |
 | `--items-input` | `data/processed/items.jsonl` | Item metadata input used for candidate universe and categories. |
 | `--interactions-input` | `data/processed/interactions.jsonl` | Interaction input used for popularity counting. |
 | `--eval-input` | `data/processed/eval.jsonl` | Eval query set input. |
@@ -483,6 +498,8 @@ Notes:
 | `--seed` | `42` | RNG seed for deterministic random baselines. |
 | `--rating-threshold` | `4.0` | Popularity counts only interactions with `rating >= threshold`. |
 | `--run-id` | timestamp | Optional run id (`YYYYMMDDHHMMSSmmm` if omitted). |
+| `--text-fields` | `title,author,categories` | Comma-separated item fields used by `tfidf`. |
+| `--workers` | `1` | Worker processes used when precomputing TF-IDF query pools. |
 
 Behavior:
 
@@ -492,7 +509,9 @@ Behavior:
 - `category_popular`: exact-match category filter first, then popularity ranking within the matched pool, with global-popular fallback.
 - `category_*` uses the last query item's `categories` string, aligned with the current `query-pooling=last` embedding eval protocol.
 - Category baselines use short prebuilt candidate pools (default size `128`) and fall back to global pools when the category pool is missing or too short.
-- All four baselines exclude `query_item_ids` themselves from predictions.
+- `tfidf`: build a sparse lexical baseline over item text (`title`, `author`, `categories` by default) and rank items by TF-IDF overlap with the last query item.
+- `tfidf` uses the same eval protocol and excludes `query_item_ids` from predictions; if a query item has no usable text, it falls back to `global_popular`.
+- All baselines exclude `query_item_ids` themselves from predictions.
 
 ### `scripts/embedding/generate_item_embeddings.py`
 
@@ -569,7 +588,7 @@ Behavior:
 |---|---|---|
 | `--embedding-eval-dir` | required | One embedding eval dir containing `run_eval_report.json`. |
 | `--baseline-root` | `outputs/baselines` | Root directory containing baseline runs. |
-| `--baselines` | `category_popular,global_popular,category_random,random` | Ordered baseline list included in the chart. |
+| `--baselines` | `tfidf,category_popular,global_popular,category_random,random` | Ordered baseline list included in the chart. |
 | `--output-dir` | auto | Output dir for grouped bar charts and summaries. Defaults to `img/baseline_comparison/`. |
 
 Behavior:

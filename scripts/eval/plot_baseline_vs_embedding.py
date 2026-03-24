@@ -52,7 +52,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--baselines",
-        default="category_popular,global_popular,category_random,random",
+        default="tfidf,category_popular,global_popular,category_random,random",
         help="Comma-separated baseline names to include.",
     )
     parser.add_argument(

@@ -354,6 +354,7 @@ P0 baseline 清单:
 - `global_popular`
 - `category_random`
 - `category_popular`
+- `tfidf`
 
 baseline 输入约束:
 
@@ -371,8 +372,9 @@ baseline 规则（当前实现）:
 - `global_popular`: 按正反馈计数降序召回。
 - `category_random`: 只使用最后一个 query item 的 `categories` 字符串，命中对应 category 的预构建短随机候选池；若 category 缺失或短池不足，则回退到全局 random。
 - `category_popular`: 只使用最后一个 query item 的 `categories` 字符串，命中对应 category 的预构建短热门候选池；若 category 缺失或短池不足，则回退到 global popular。
+- `tfidf`: 使用最后一个 query item 的文本作为 lexical query，默认字段为 `title + author + categories`；先离线构建稀疏 TF-IDF 候选池，再按相同 eval 协议做 topK 评估。若 query item 无可用文本，则回退到 global popular。
 - `category` 匹配当前仅使用 `items.jsonl` 中已落盘的完整 `categories` 字符串精确匹配，不做层级拆分。
-- baseline 在线检索不再扫描全量 item；当前默认使用长度 `128` 的预构建短候选池，以覆盖 `@100` 指标与 query-item 排除场景。
+- baseline 在线检索不再扫描全量 item；当前默认使用长度 `128` 的预构建短候选池，以覆盖 `@100` 指标与 query-item 排除场景。TF-IDF 也会先预构建 query pool，以保持与 embedding / baseline 的同协议对比。
 
 评估口径:
 
